@@ -9,10 +9,6 @@ describe('configSchema', () => {
 
   it('accepts valid full config', () => {
     const config = {
-      providers: {
-        anthropic: { apiKey: 'test-key' },
-        openai: { apiKey: 'test-key', baseURL: 'https://api.example.com' },
-      },
       include: ['**/*.eval.ts'],
       exclude: ['node_modules/**'],
       trials: 3,
@@ -39,17 +35,6 @@ describe('configSchema', () => {
   it('rejects invalid reporter', () => {
     const config = {
       reporters: ['invalid'],
-    }
-
-    const result = configSchema.safeParse(config)
-    expect(result.success).toBe(false)
-  })
-
-  it('rejects invalid baseURL', () => {
-    const config = {
-      providers: {
-        anthropic: { baseURL: 'not-a-url' },
-      },
     }
 
     const result = configSchema.safeParse(config)

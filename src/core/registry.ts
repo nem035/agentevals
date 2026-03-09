@@ -1,12 +1,13 @@
-import type { Suite, EvalTask, SuiteOptions, EvalOptions, EvalFn } from '../types.js'
+import type { EvalTask, EvalFn, EvaliteOptions, EvalGroup } from '../types.js'
 
 /**
- * Global registry for collecting suites and tasks during file loading.
- * This mimics how Vitest/Jest collect tests via describe/it.
+ * Global registry for collecting eval tasks during file loading.
+ * Tasks can be standalone or grouped.
  */
 
-let currentSuites: Suite[] = []
-let currentSuite: Suite | null = null
+let collectedTasks: EvalTask[] = []
+let collectedGroups: EvalGroup[] = []
+let currentGroup: EvalGroup | null = null
 let currentFile: string = ''
 
 export function setCurrentFile(file: string): void {
@@ -18,67 +19,96 @@ export function getCurrentFile(): string {
 }
 
 export function resetRegistry(): void {
-  currentSuites = []
-  currentSuite = null
+  collectedTasks = []
+  collectedGroups = []
+  currentGroup = null
   currentFile = ''
 }
 
-export function getCollectedSuites(): Suite[] {
-  return currentSuites
+export function getCollectedTasks(): EvalTask[] {
+  return collectedTasks
+}
+
+export function getCollectedGroups(): EvalGroup[] {
+  return collectedGroups
 }
 
 /**
- * Define a test suite with optional configuration
+ * Define a single eval task.
+ *
+ * @example
+ * evalite('answers math questions', async ({ expect }) => {
+ *   const result = await generateText({
+ *     model: anthropic('claude-sonnet-4-20250514'),
+ *     prompt: 'What is 2 + 2?',
+ *   })
+ *   expect(result).toContain('4')
+ * })
+ *
+ * @example
+ * evalite('with judge', {
+ *   judge: anthropic('claude-haiku-4-20250514'),
+ * }, async ({ expect }) => {
+ *   const result = await generateText({ ... })
+ *   await expect(result).toPassJudge('Answers correctly')
+ * })
  */
-export function describe(
+export function evalite(
   name: string,
-  optionsOrFn: SuiteOptions | (() => void),
-  maybeFn?: () => void
-): void {
-  const options: SuiteOptions = typeof optionsOrFn === 'function' ? {} : optionsOrFn
-  const fn = typeof optionsOrFn === 'function' ? optionsOrFn : maybeFn!
-
-  const suite: Suite = {
-    name,
-    options,
-    tasks: [],
-    file: currentFile,
-  }
-
-  currentSuites.push(suite)
-  currentSuite = suite
-
-  // Execute the suite body to collect tasks
-  fn()
-
-  currentSuite = null
-}
-
-/**
- * Define an eval task within a suite
- * Note: Using 'evalTask' internally since 'eval' is a reserved word
- */
-export function evalTask(
-  name: string,
-  optionsOrFn: EvalOptions | EvalFn,
+  optionsOrFn: EvaliteOptions | EvalFn,
   maybeFn?: EvalFn
 ): void {
-  if (!currentSuite) {
-    throw new Error(`eval() must be called within a describe() block`)
-  }
-
-  const options: EvalOptions = typeof optionsOrFn === 'function' ? {} : optionsOrFn
+  const options: EvaliteOptions = typeof optionsOrFn === 'function' ? {} : optionsOrFn
   const fn = typeof optionsOrFn === 'function' ? optionsOrFn : maybeFn!
 
   const task: EvalTask = {
     name,
     fn,
     options,
+    group: currentGroup?.name,
   }
 
-  currentSuite.tasks.push(task)
+  if (currentGroup) {
+    currentGroup.tasks.push(task)
+  }
+
+  collectedTasks.push(task)
 }
 
-// Aliases
-export { evalTask as test }
-export { evalTask as it }
+/**
+ * Group related evals together.
+ *
+ * @example
+ * evalite.group('math-agent', {
+ *   judge: anthropic('claude-haiku-4-20250514'),
+ * }, () => {
+ *   evalite('addition', async ({ expect }) => { ... })
+ *   evalite('subtraction', async ({ expect }) => { ... })
+ * })
+ */
+evalite.group = function group(
+  name: string,
+  optionsOrFn: EvaliteOptions | (() => void),
+  maybeFn?: () => void
+): void {
+  const options: EvaliteOptions = typeof optionsOrFn === 'function' ? {} : optionsOrFn
+  const fn = typeof optionsOrFn === 'function' ? optionsOrFn : maybeFn!
+
+  const evalGroup: EvalGroup = {
+    name,
+    tasks: [],
+    options,
+  }
+
+  collectedGroups.push(evalGroup)
+  currentGroup = evalGroup
+
+  // Execute the group body to collect tasks
+  fn()
+
+  currentGroup = null
+}
+
+// Aliases for familiarity
+export { evalite as test }
+export { evalite as it }

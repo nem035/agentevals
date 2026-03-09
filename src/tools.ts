@@ -1,107 +1,36 @@
 /**
- * Tool definition utilities for agentevals
+ * Tool testing utilities for agentevals
+ *
+ * These helpers work alongside AI SDK's native `tool()` function.
+ * Use them to create mock/spy executors for testing tool call behavior.
  */
-
-import type { ToolDefinition, ToolParameter, ToolWithExecutor } from './types.js'
-
-/**
- * Options for defining a tool
- */
-export interface DefineToolOptions<TArgs extends Record<string, unknown> = Record<string, unknown>> {
-  /** Human-readable description of what the tool does */
-  description?: string
-  /** Parameter definitions */
-  parameters?: ToolParameter[]
-  /** Function to execute when the tool is called */
-  execute?: (args: TArgs) => Promise<unknown> | unknown
-}
-
-/**
- * Define a tool for use in evals.
- *
- * @example
- * // Simple tool without execution
- * const getWeather = defineTool('getWeather', {
- *   description: 'Get the current weather for a location',
- *   parameters: [
- *     { name: 'location', type: 'string', required: true },
- *     { name: 'units', type: 'string', required: false },
- *   ],
- * })
- *
- * @example
- * // Tool with execution function
- * const calculator = defineTool('calculator', {
- *   description: 'Perform arithmetic operations',
- *   parameters: [
- *     { name: 'operation', type: 'string', required: true },
- *     { name: 'a', type: 'number', required: true },
- *     { name: 'b', type: 'number', required: true },
- *   ],
- *   execute: async ({ operation, a, b }) => {
- *     switch (operation) {
- *       case 'add': return a + b
- *       case 'subtract': return a - b
- *       case 'multiply': return a * b
- *       case 'divide': return a / b
- *       default: throw new Error(`Unknown operation: ${operation}`)
- *     }
- *   },
- * })
- *
- * @example
- * // Using in a test
- * describe('weather-agent', {
- *   ai: anthropic('claude-sonnet-4-20250514'),
- *   system: 'You are a weather assistant.',
- *   tools: [getWeather],
- * }, () => {
- *   e('asks for weather', async ({ ai, expect }) => {
- *     const result = await ai.prompt('What is the weather in Tokyo?')
- *
- *     expect(result).toolCalls.toInclude('getWeather')
- *     expect(result).toolCalls.toHaveArgs('getWeather', { location: 'Tokyo' })
- *   })
- * })
- */
-export function defineTool<TArgs extends Record<string, unknown> = Record<string, unknown>>(
-  name: string,
-  options: DefineToolOptions<TArgs> = {}
-): ToolWithExecutor {
-  const definition: ToolDefinition = {
-    name,
-    description: options.description,
-    parameters: options.parameters,
-  }
-
-  return {
-    definition,
-    execute: options.execute as ((args: Record<string, unknown>) => Promise<unknown> | unknown) | undefined,
-  }
-}
 
 /**
  * Create a mock tool executor that records calls and returns a specified value.
- * Useful for testing tool call behavior without actual execution.
+ * Use this with AI SDK's `tool()` function.
  *
  * @example
- * const mockExecute = createMockExecutor({ success: true })
- * const myTool = defineTool('myTool', {
- *   description: 'A mock tool',
- *   parameters: [{ name: 'input', type: 'string', required: true }],
+ * import { tool } from 'ai'
+ * import { z } from 'zod'
+ * import { createMockExecutor } from '@nem035/agentevals'
+ *
+ * const mockExecute = createMockExecutor({ temperature: 72, unit: 'F' })
+ *
+ * const weatherTool = tool({
+ *   description: 'Get weather',
+ *   inputSchema: z.object({ location: z.string() }),
  *   execute: mockExecute,
  * })
  *
  * // After running the eval...
- * expect(mockExecute.calls).toHaveLength(1)
- * expect(mockExecute.calls[0]).toEqual({ input: 'hello' })
+ * console.log(mockExecute.calls) // [{ location: 'Tokyo' }]
  */
-export function createMockExecutor<TResult = unknown>(
+export function createMockExecutor<TArgs = Record<string, unknown>, TResult = unknown>(
   returnValue: TResult
-): ((args: Record<string, unknown>) => TResult) & { calls: Record<string, unknown>[] } {
-  const calls: Record<string, unknown>[] = []
+): ((args: TArgs) => TResult) & { calls: TArgs[] } {
+  const calls: TArgs[] = []
 
-  const executor = (args: Record<string, unknown>): TResult => {
+  const executor = (args: TArgs): TResult => {
     calls.push(args)
     return returnValue
   }
@@ -113,30 +42,37 @@ export function createMockExecutor<TResult = unknown>(
 
 /**
  * Create a spy executor that wraps an existing executor and records calls.
+ * Use this with AI SDK's `tool()` function.
  *
  * @example
- * const originalExecute = async (args) => fetchWeather(args.location)
- * const spyExecute = createSpyExecutor(originalExecute)
+ * import { tool } from 'ai'
+ * import { z } from 'zod'
+ * import { createSpyExecutor } from '@nem035/agentevals'
  *
- * const weatherTool = defineTool('getWeather', {
+ * const spy = createSpyExecutor(async ({ location }) => {
+ *   return fetchWeather(location)
+ * })
+ *
+ * const weatherTool = tool({
  *   description: 'Get weather',
- *   parameters: [{ name: 'location', type: 'string', required: true }],
- *   execute: spyExecute,
+ *   inputSchema: z.object({ location: z.string() }),
+ *   execute: spy,
  * })
  *
  * // After running the eval...
- * expect(spyExecute.calls).toContainEqual({ location: 'Tokyo' })
+ * console.log(spy.calls)   // [{ location: 'Tokyo' }]
+ * console.log(spy.results) // [{ temperature: 72 }]
  */
-export function createSpyExecutor<TResult = unknown>(
-  executor: (args: Record<string, unknown>) => TResult | Promise<TResult>
-): ((args: Record<string, unknown>) => TResult | Promise<TResult>) & {
-  calls: Record<string, unknown>[]
+export function createSpyExecutor<TArgs = Record<string, unknown>, TResult = unknown>(
+  executor: (args: TArgs) => TResult | Promise<TResult>
+): ((args: TArgs) => TResult | Promise<TResult>) & {
+  calls: TArgs[]
   results: TResult[]
 } {
-  const calls: Record<string, unknown>[] = []
+  const calls: TArgs[] = []
   const results: TResult[] = []
 
-  const spy = (args: Record<string, unknown>): TResult | Promise<TResult> => {
+  const spy = (args: TArgs): TResult | Promise<TResult> => {
     calls.push(args)
     const result = executor(args)
 

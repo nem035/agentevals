@@ -1,14 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { runSuites } from './runner.js'
-import type { Suite, AIProvider, EvaliteConfig, ProviderName, ChatResult } from '../types.js'
+import { describe, it, expect, vi } from 'vitest'
+import { runEvals } from './runner.js'
+import type { EvalTask, EvalGroup, EvaliteConfig, AIResult } from '../types.js'
 
-function createMockProvider(response: string = 'Mock response'): AIProvider {
+function makeAIResult(text: string = 'Mock response'): AIResult {
   return {
-    chat: vi.fn().mockResolvedValue({
-      content: response,
-      toolCalls: [],
-      usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
-    } as ChatResult),
+    text,
+    toolCalls: [],
+    toolResults: [],
+    usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
+    totalUsage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
+    steps: [],
   }
 }
 
@@ -21,38 +22,21 @@ function createMockConfig(overrides: Partial<EvaliteConfig> = {}): EvaliteConfig
   }
 }
 
-const mockAiConfig = { provider: 'anthropic' as const, model: 'test-model' }
-
-describe('runSuites', () => {
-  let mockProvider: AIProvider
-  let providers: Map<ProviderName, AIProvider>
-
-  beforeEach(() => {
-    mockProvider = createMockProvider()
-    providers = new Map([['anthropic', mockProvider]])
-  })
-
-  it('runs a simple passing suite', async () => {
-    const suites: Suite[] = [
+describe('runEvals', () => {
+  it('runs a simple passing eval', async () => {
+    const tasks: EvalTask[] = [
       {
-        name: 'test-suite',
-        file: '/test.eval.ts',
-        options: { ai: mockAiConfig, system: 'You are helpful' },
-        tasks: [
-          {
-            name: 'passing-task',
-            fn: async ({ ai, expect }) => {
-              const result = await ai.chat([{ role: 'user', content: 'Hi' }])
-              expect(result).toContain('Mock')
-            },
-          },
-        ],
+        name: 'passing-task',
+        fn: async ({ expect }) => {
+          const result = makeAIResult('Mock response')
+          expect(result).toContain('Mock')
+        },
+        options: {},
       },
     ]
 
-    const result = await runSuites(suites, {
+    const result = await runEvals([], tasks, {
       config: createMockConfig(),
-      providers,
     })
 
     expect(result.success).toBe(true)
@@ -61,27 +45,20 @@ describe('runSuites', () => {
     expect(result.summary.failed).toBe(0)
   })
 
-  it('runs a failing suite', async () => {
-    const suites: Suite[] = [
+  it('runs a failing eval', async () => {
+    const tasks: EvalTask[] = [
       {
-        name: 'test-suite',
-        file: '/test.eval.ts',
-        options: { ai: mockAiConfig },
-        tasks: [
-          {
-            name: 'failing-task',
-            fn: async ({ ai, expect }) => {
-              const result = await ai.chat([{ role: 'user', content: 'Hi' }])
-              expect(result).toContain('nonexistent text')
-            },
-          },
-        ],
+        name: 'failing-task',
+        fn: async ({ expect }) => {
+          const result = makeAIResult('Mock response')
+          expect(result).toContain('nonexistent text')
+        },
+        options: {},
       },
     ]
 
-    const result = await runSuites(suites, {
+    const result = await runEvals([], tasks, {
       config: createMockConfig(),
-      providers,
     })
 
     expect(result.success).toBe(false)
@@ -89,175 +66,146 @@ describe('runSuites', () => {
   })
 
   it('handles task errors', async () => {
-    const suites: Suite[] = [
+    const tasks: EvalTask[] = [
       {
-        name: 'test-suite',
-        file: '/test.eval.ts',
-        options: { ai: mockAiConfig },
-        tasks: [
-          {
-            name: 'error-task',
-            fn: async () => {
-              throw new Error('Unexpected error')
-            },
-          },
-        ],
+        name: 'error-task',
+        fn: async () => {
+          throw new Error('Unexpected error')
+        },
+        options: {},
       },
     ]
 
-    const result = await runSuites(suites, {
+    const result = await runEvals([], tasks, {
       config: createMockConfig(),
-      providers,
     })
 
     expect(result.success).toBe(false)
-    expect(result.suites[0].tasks[0].status).toBe('error')
+    expect(result.ungrouped[0].status).toBe('error')
   })
 
   it('runs multiple trials', async () => {
     let callCount = 0
-    const suites: Suite[] = [
+    const tasks: EvalTask[] = [
       {
-        name: 'test-suite',
-        file: '/test.eval.ts',
-        options: { ai: mockAiConfig },
-        tasks: [
-          {
-            name: 'multi-trial-task',
-            fn: async ({ ai, expect }) => {
-              callCount++
-              const result = await ai.chat([{ role: 'user', content: 'Hi' }])
-              expect(result).toContain('Mock')
-            },
-          },
-        ],
+        name: 'multi-trial-task',
+        fn: async ({ expect }) => {
+          callCount++
+          const result = makeAIResult('Mock response')
+          expect(result).toContain('Mock')
+        },
+        options: {},
       },
     ]
 
-    const result = await runSuites(suites, {
+    const result = await runEvals([], tasks, {
       config: createMockConfig({ trials: 3 }),
-      providers,
     })
 
     expect(callCount).toBe(3)
-    expect(result.suites[0].tasks[0].trials).toHaveLength(3)
+    expect(result.ungrouped[0].trials).toHaveLength(3)
   })
 
-  it('tracks total usage across tasks', async () => {
-    const suites: Suite[] = [
+  it('runs grouped tasks', async () => {
+    const groups: EvalGroup[] = [
       {
-        name: 'test-suite',
-        file: '/test.eval.ts',
-        options: { ai: mockAiConfig },
+        name: 'test-group',
+        options: {},
         tasks: [
           {
             name: 'task-1',
-            fn: async ({ ai }) => {
-              await ai.chat([{ role: 'user', content: 'Hi' }])
+            fn: async ({ expect }) => {
+              const result = makeAIResult('Hello')
+              expect(result).toContain('Hello')
             },
+            options: {},
+            group: 'test-group',
           },
           {
             name: 'task-2',
-            fn: async ({ ai }) => {
-              await ai.chat([{ role: 'user', content: 'Hi' }])
+            fn: async ({ expect }) => {
+              const result = makeAIResult('World')
+              expect(result).toContain('World')
             },
+            options: {},
+            group: 'test-group',
           },
         ],
       },
     ]
 
-    const result = await runSuites(suites, {
+    const result = await runEvals(groups, [], {
       config: createMockConfig(),
-      providers,
     })
 
+    expect(result.groups).toHaveLength(1)
+    expect(result.groups[0].tasks).toHaveLength(2)
     expect(result.summary.total).toBe(2)
     expect(result.summary.passed).toBe(2)
   })
 
   it('calls lifecycle hooks', async () => {
-    const onSuiteStart = vi.fn()
-    const onSuiteEnd = vi.fn()
     const onTaskStart = vi.fn()
     const onTaskEnd = vi.fn()
 
-    const suites: Suite[] = [
+    const tasks: EvalTask[] = [
       {
-        name: 'test-suite',
-        file: '/test.eval.ts',
-        options: { ai: mockAiConfig },
-        tasks: [
-          {
-            name: 'task-1',
-            fn: async ({ ai, expect }) => {
-              const result = await ai.chat([{ role: 'user', content: 'Hi' }])
-              expect(result).toContain('Mock')
-            },
-          },
-        ],
+        name: 'task-1',
+        fn: async ({ expect }) => {
+          const result = makeAIResult('Mock')
+          expect(result).toContain('Mock')
+        },
+        options: {},
       },
     ]
 
-    await runSuites(suites, {
+    await runEvals([], tasks, {
       config: createMockConfig(),
-      providers,
-      onSuiteStart,
-      onSuiteEnd,
       onTaskStart,
       onTaskEnd,
     })
 
-    expect(onSuiteStart).toHaveBeenCalledTimes(1)
-    expect(onSuiteEnd).toHaveBeenCalledTimes(1)
     expect(onTaskStart).toHaveBeenCalledTimes(1)
     expect(onTaskEnd).toHaveBeenCalledTimes(1)
   })
 
-  it('runs multiple suites', async () => {
-    const suites: Suite[] = [
+  it('runs both groups and ungrouped tasks', async () => {
+    const groups: EvalGroup[] = [
       {
-        name: 'suite-1',
-        file: '/test1.eval.ts',
-        options: { ai: mockAiConfig },
-        tasks: [{ name: 'task-1', fn: async () => {} }],
-      },
-      {
-        name: 'suite-2',
-        file: '/test2.eval.ts',
-        options: { ai: mockAiConfig },
-        tasks: [{ name: 'task-2', fn: async () => {} }],
-      },
-    ]
-
-    const result = await runSuites(suites, {
-      config: createMockConfig(),
-      providers,
-    })
-
-    expect(result.suites).toHaveLength(2)
-    expect(result.summary.total).toBe(2)
-  })
-
-  it('aggregates duration correctly', async () => {
-    const suites: Suite[] = [
-      {
-        name: 'test-suite',
-        file: '/test.eval.ts',
-        options: { ai: mockAiConfig },
+        name: 'group-1',
+        options: {},
         tasks: [
-          {
-            name: 'task-1',
-            fn: async () => {
-              await new Promise((r) => setTimeout(r, 50))
-            },
-          },
+          { name: 'grouped-task', fn: async () => {}, options: {}, group: 'group-1' },
         ],
       },
     ]
 
-    const result = await runSuites(suites, {
+    const ungrouped: EvalTask[] = [
+      { name: 'standalone-task', fn: async () => {}, options: {} },
+    ]
+
+    const result = await runEvals(groups, ungrouped, {
       config: createMockConfig(),
-      providers,
+    })
+
+    expect(result.groups).toHaveLength(1)
+    expect(result.ungrouped).toHaveLength(1)
+    expect(result.summary.total).toBe(2)
+  })
+
+  it('aggregates duration correctly', async () => {
+    const tasks: EvalTask[] = [
+      {
+        name: 'slow-task',
+        fn: async () => {
+          await new Promise((r) => setTimeout(r, 50))
+        },
+        options: {},
+      },
+    ]
+
+    const result = await runEvals([], tasks, {
+      config: createMockConfig(),
     })
 
     expect(result.duration).toBeGreaterThanOrEqual(50)

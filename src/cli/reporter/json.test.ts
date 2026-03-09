@@ -17,10 +17,9 @@ describe('createJsonReporter', () => {
     return {
       success: true,
       summary: { total: 1, passed: 1, failed: 0, skipped: 0 },
-      suites: [
+      groups: [
         {
-          name: 'test-suite',
-          file: '/test.eval.ts',
+          name: 'test-group',
           duration: 100,
           tasks: [
             {
@@ -40,6 +39,7 @@ describe('createJsonReporter', () => {
           ],
         },
       ],
+      ungrouped: [],
       usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
       costUsd: 0.01,
       duration: 100,
@@ -65,7 +65,7 @@ describe('createJsonReporter', () => {
     reporter.onEnd?.(result)
 
     const output = consoleSpy.mock.calls[0][0] as string
-    expect(output).toContain('\n') // Pretty JSON has newlines
+    expect(output).toContain('\n')
   })
 
   it('outputs compact JSON by default', () => {
@@ -88,7 +88,8 @@ describe('createJsonReporter', () => {
 
     expect(output).toHaveProperty('success')
     expect(output).toHaveProperty('summary')
-    expect(output).toHaveProperty('suites')
+    expect(output).toHaveProperty('groups')
+    expect(output).toHaveProperty('ungrouped')
     expect(output).toHaveProperty('usage')
     expect(output).toHaveProperty('costUsd')
     expect(output).toHaveProperty('duration')
@@ -101,7 +102,7 @@ describe('createJsonReporter', () => {
     reporter.onEnd?.(result)
 
     const output = JSON.parse(consoleSpy.mock.calls[0][0] as string)
-    const task = output.suites[0].tasks[0]
+    const task = output.groups[0].tasks[0]
 
     expect(task).toHaveProperty('name')
     expect(task).toHaveProperty('status')
@@ -116,7 +117,7 @@ describe('createJsonReporter', () => {
     reporter.onEnd?.(result)
 
     const output = JSON.parse(consoleSpy.mock.calls[0][0] as string)
-    const trial = output.suites[0].tasks[0].trials[0]
+    const trial = output.groups[0].tasks[0].trials[0]
 
     expect(trial.graders).toHaveLength(1)
     expect(trial.graders[0]).toHaveProperty('pass')

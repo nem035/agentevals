@@ -1,11 +1,8 @@
-// Core test functions
-export { describe, evalTask as eval, evalTask, test, it } from './core/registry.js'
+// Core eval functions
+export { evalite, test, it } from './core/registry.js'
 
-// Provider helpers
-export { anthropic, openai, type AIConfig } from './providers.js'
-
-// Tool helpers
-export { defineTool, createMockExecutor, createSpyExecutor } from './tools.js'
+// Tool testing helpers
+export { createMockExecutor, createSpyExecutor } from './tools.js'
 
 // Expect & Graders
 export { createExpect, Expect, ExpectationError, matchers } from './expect/index.js'
@@ -17,41 +14,31 @@ export { defaultConfig } from './config/defaults.js'
 
 // Types
 export type {
-  // Core types
-  Message,
-  MessageRole,
-  ToolDefinition,
-  ToolParameter,
-  ToolWithExecutor,
-  ToolCall,
+  // AI result types (compatible with AI SDK)
+  AIResult,
+  ToolCallInfo,
+  ToolResultInfo,
+  UsageInfo,
+  StepInfo,
 
-  // AI types
-  AIProvider,
-  ChatOptions,
-  ChatResult,
-  TokenUsage,
-  ProviderName,
-  ProviderConfig,
-
-  // Test types
-  Suite,
-  SuiteOptions,
+  // Eval types
   EvalTask,
-  EvalOptions,
+  EvaliteOptions,
+  EvalGroup,
   EvalContext,
   EvalFn,
 
-  // Result types
+  // Grading
   GraderResult,
+  JudgeOptions,
+
+  // Result types
   TrialResult,
   TaskResult,
   TaskStatus,
-  SuiteResult,
+  GroupResult,
   RunResult,
 
   // Config types
   EvaliteConfig,
 } from './types.js'
-
-// Provider factory
-export { createProvider, createProvidersFromConfig } from './ai/interface.js'

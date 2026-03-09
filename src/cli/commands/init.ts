@@ -5,22 +5,6 @@ import pc from 'picocolors'
 const CONFIG_TEMPLATE = `import { defineConfig } from '@nem035/agentevals'
 
 export default defineConfig({
-  // Provider configuration
-  // API keys can also be set via environment variables:
-  // ANTHROPIC_API_KEY, OPENAI_API_KEY
-  providers: {
-    anthropic: {
-      // apiKey: process.env.ANTHROPIC_API_KEY,
-    },
-    openai: {
-      // apiKey: process.env.OPENAI_API_KEY,
-    },
-  },
-
-  // Default provider and model
-  defaultProvider: 'anthropic',
-  defaultModel: 'claude-sonnet-4-20250514',
-
   // Test discovery patterns
   include: ['**/*.eval.ts', '**/*.eval.js'],
   exclude: ['node_modules/**', 'dist/**'],
@@ -31,47 +15,45 @@ export default defineConfig({
   parallel: true,      // Run tasks in parallel
   maxConcurrency: 5,   // Max concurrent tasks
 
-  // LLM Judge configuration
-  judge: {
-    provider: 'anthropic',
-    model: 'claude-sonnet-4-20250514',
-  },
-
   // Output reporters
   reporters: ['console'],
 })
 `
 
-const EXAMPLE_EVAL_TEMPLATE = `import { describe, eval, expect } from '@nem035/agentevals'
+const EXAMPLE_EVAL_TEMPLATE = `import { evalite } from '@nem035/agentevals'
+import { anthropic } from '@ai-sdk/anthropic'
+import { generateText } from 'ai'
 
-describe('example-agent', {
-  system: 'You are a helpful assistant.',
-}, () => {
-
-  eval('responds to greeting', async ({ ai }) => {
-    const result = await ai.chat([
-      { role: 'user', content: 'Hello!' }
-    ])
-
-    expect(result).toContain('hello')
-    expect(result).not.toContain('error')
+// Simple eval - use AI SDK directly, no wrappers!
+evalite('responds to greeting', async ({ expect }) => {
+  const result = await generateText({
+    model: anthropic('claude-sonnet-4-20250514'),
+    system: 'You are a friendly assistant. Keep responses brief.',
+    prompt: 'Hello!',
   })
 
-  eval('answers questions', async ({ ai }) => {
-    const result = await ai.chat([
-      { role: 'user', content: 'What is 2 + 2?' }
-    ])
+  expect(result).toContain('hello')
+  expect(result).not.toContain('error')
+})
 
-    expect(result).toMatch(/4|four/i)
+evalite('answers math questions', async ({ expect }) => {
+  const result = await generateText({
+    model: anthropic('claude-sonnet-4-20250514'),
+    prompt: 'What is 2 + 2? Just give me the number.',
   })
 
-  eval('is helpful', async ({ ai }) => {
-    const result = await ai.chat([
-      { role: 'user', content: 'Can you help me?' }
-    ])
+  expect(result).toMatch(/4/)
+})
 
-    // Use LLM judge for nuanced evaluation
-    await expect(result).toPassJudge('Responds helpfully and offers assistance')
+// Group related evals together
+evalite.group('helpfulness', () => {
+  evalite('offers assistance', async ({ expect }) => {
+    const result = await generateText({
+      model: anthropic('claude-sonnet-4-20250514'),
+      prompt: 'Can you help me?',
+    })
+
+    expect(result).toContain('help')
   })
 })
 `
@@ -80,25 +62,25 @@ export async function initCommand(): Promise<number> {
   const cwd = process.cwd()
 
   console.log()
-  console.log(pc.bold(pc.cyan(' EVALITE')) + ' - Initializing project')
+  console.log(pc.bold(pc.cyan(' AGENTEVALS')) + ' - Initializing project')
   console.log()
 
   // Create config file
   const configPath = resolve(cwd, 'agentevals.config.ts')
   if (existsSync(configPath)) {
-    console.log(pc.yellow('  ⚠ agentevals.config.ts already exists, skipping'))
+    console.log(pc.yellow('  ! agentevals.config.ts already exists, skipping'))
   } else {
     writeFileSync(configPath, CONFIG_TEMPLATE)
-    console.log(pc.green('  ✓ Created agentevals.config.ts'))
+    console.log(pc.green('  + Created agentevals.config.ts'))
   }
 
   // Create example eval file
   const examplePath = resolve(cwd, 'example.eval.ts')
   if (existsSync(examplePath)) {
-    console.log(pc.yellow('  ⚠ example.eval.ts already exists, skipping'))
+    console.log(pc.yellow('  ! example.eval.ts already exists, skipping'))
   } else {
     writeFileSync(examplePath, EXAMPLE_EVAL_TEMPLATE)
-    console.log(pc.green('  ✓ Created example.eval.ts'))
+    console.log(pc.green('  + Created example.eval.ts'))
   }
 
   console.log()

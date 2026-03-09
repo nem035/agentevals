@@ -46,9 +46,6 @@ export async function loadConfig(cwd: string = process.cwd()): Promise<EvaliteCo
   return {
     ...defaultConfig,
     ...parsed.data,
-    providers: {
-      ...parsed.data.providers,
-    },
   }
 }
 

@@ -13,10 +13,9 @@ export function createJsonReporter(options: JsonReporterOptions = {}): Reporter 
       const output = {
         success: result.success,
         summary: result.summary,
-        suites: result.suites.map((suite) => ({
-          name: suite.name,
-          file: suite.file,
-          tasks: suite.tasks.map((task) => ({
+        groups: result.groups.map((group) => ({
+          name: group.name,
+          tasks: group.tasks.map((task) => ({
             name: task.name,
             status: task.status,
             duration: task.duration,
@@ -33,7 +32,24 @@ export function createJsonReporter(options: JsonReporterOptions = {}): Reporter 
               costUsd: trial.costUsd,
             })),
           })),
-          duration: suite.duration,
+          duration: group.duration,
+        })),
+        ungrouped: result.ungrouped.map((task) => ({
+          name: task.name,
+          status: task.status,
+          duration: task.duration,
+          trials: task.trials.map((trial) => ({
+            status: trial.status,
+            duration: trial.duration,
+            error: trial.error,
+            graders: trial.graderResults.map((g) => ({
+              pass: g.pass,
+              reason: g.reason,
+              score: g.score,
+            })),
+            usage: trial.usage,
+            costUsd: trial.costUsd,
+          })),
         })),
         usage: result.usage,
         costUsd: result.costUsd,

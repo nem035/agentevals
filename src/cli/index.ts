@@ -7,8 +7,8 @@ const program = new Command()
 
 program
   .name('agentevals')
-  .description('A Vitest-like CLI for AI agent evaluations')
-  .version('0.1.0')
+  .description('A CLI for AI agent evaluations. Test your LLM apps with simple, declarative evals.')
+  .version('0.2.0')
 
 program
   .command('run', { isDefault: true })
@@ -20,8 +20,6 @@ program
   .option('--max-cost <usd>', 'Maximum cost limit in USD', parseFloat)
   .option('-r, --reporter <type>', 'Reporter type: console, json', 'console')
   .option('-v, --verbose', 'Show detailed output')
-  .option('-m, --model <model>', 'Override default model')
-  .option('-p, --provider <name>', 'Override default provider: anthropic, openai')
   .option('--dry-run', 'Show what would be run without executing')
   .action(async (patterns: string[], options) => {
     const exitCode = await runCommand(patterns, options)

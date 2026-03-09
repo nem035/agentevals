@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
-  describe as describeSuite,
-  evalTask,
+  evalite,
   resetRegistry,
   setCurrentFile,
-  getCollectedSuites,
+  getCollectedTasks,
+  getCollectedGroups,
 } from './registry.js'
 
 describe('registry', () => {
@@ -12,100 +12,116 @@ describe('registry', () => {
     resetRegistry()
   })
 
-  describe('describe()', () => {
-    it('creates a suite with name and options', () => {
+  describe('evalite()', () => {
+    it('registers a task with name and function', () => {
       setCurrentFile('/test/file.eval.ts')
 
-      describeSuite('my-suite', { system: 'You are helpful' }, () => {})
+      evalite('my-task', async () => {})
 
-      const suites = getCollectedSuites()
-      expect(suites).toHaveLength(1)
-      expect(suites[0].name).toBe('my-suite')
-      expect(suites[0].options.system).toBe('You are helpful')
-      expect(suites[0].file).toBe('/test/file.eval.ts')
+      const tasks = getCollectedTasks()
+      expect(tasks).toHaveLength(1)
+      expect(tasks[0].name).toBe('my-task')
     })
 
-    it('creates a suite without options', () => {
+    it('registers a task with options', () => {
       setCurrentFile('/test/file.eval.ts')
 
-      describeSuite('simple-suite', () => {})
+      evalite('my-task', { timeout: 5000 }, async () => {})
 
-      const suites = getCollectedSuites()
-      expect(suites).toHaveLength(1)
-      expect(suites[0].name).toBe('simple-suite')
-      expect(suites[0].options).toEqual({})
-    })
-
-    it('collects multiple suites', () => {
-      setCurrentFile('/test/file.eval.ts')
-
-      describeSuite('suite-1', () => {})
-      describeSuite('suite-2', () => {})
-      describeSuite('suite-3', () => {})
-
-      const suites = getCollectedSuites()
-      expect(suites).toHaveLength(3)
-    })
-  })
-
-  describe('evalTask()', () => {
-    it('adds task to current suite', () => {
-      setCurrentFile('/test/file.eval.ts')
-
-      describeSuite('my-suite', () => {
-        evalTask('my-task', async () => {})
-      })
-
-      const suites = getCollectedSuites()
-      expect(suites[0].tasks).toHaveLength(1)
-      expect(suites[0].tasks[0].name).toBe('my-task')
-    })
-
-    it('adds task with options', () => {
-      setCurrentFile('/test/file.eval.ts')
-
-      describeSuite('my-suite', () => {
-        evalTask('my-task', { timeout: 5000 }, async () => {})
-      })
-
-      const suites = getCollectedSuites()
-      expect(suites[0].tasks[0].options?.timeout).toBe(5000)
+      const tasks = getCollectedTasks()
+      expect(tasks).toHaveLength(1)
+      expect(tasks[0].options.timeout).toBe(5000)
     })
 
     it('collects multiple tasks', () => {
       setCurrentFile('/test/file.eval.ts')
 
-      describeSuite('my-suite', () => {
-        evalTask('task-1', async () => {})
-        evalTask('task-2', async () => {})
-        evalTask('task-3', async () => {})
-      })
+      evalite('task-1', async () => {})
+      evalite('task-2', async () => {})
+      evalite('task-3', async () => {})
 
-      const suites = getCollectedSuites()
-      expect(suites[0].tasks).toHaveLength(3)
+      const tasks = getCollectedTasks()
+      expect(tasks).toHaveLength(3)
     })
 
-    it('throws if called outside describe', () => {
+    it('ungrouped tasks have no group property', () => {
       setCurrentFile('/test/file.eval.ts')
 
-      expect(() => {
-        evalTask('orphan-task', async () => {})
-      }).toThrow('eval() must be called within a describe() block')
+      evalite('standalone-task', async () => {})
+
+      const tasks = getCollectedTasks()
+      expect(tasks[0].group).toBeUndefined()
+    })
+  })
+
+  describe('evalite.group()', () => {
+    it('creates a group with name and collects tasks', () => {
+      setCurrentFile('/test/file.eval.ts')
+
+      evalite.group('my-group', () => {
+        evalite('grouped-task', async () => {})
+      })
+
+      const groups = getCollectedGroups()
+      expect(groups).toHaveLength(1)
+      expect(groups[0].name).toBe('my-group')
+      expect(groups[0].tasks).toHaveLength(1)
+      expect(groups[0].tasks[0].name).toBe('grouped-task')
+    })
+
+    it('creates a group with options', () => {
+      setCurrentFile('/test/file.eval.ts')
+
+      evalite.group('my-group', { timeout: 10000 }, () => {
+        evalite('task', async () => {})
+      })
+
+      const groups = getCollectedGroups()
+      expect(groups[0].options.timeout).toBe(10000)
+    })
+
+    it('grouped tasks have group property set', () => {
+      setCurrentFile('/test/file.eval.ts')
+
+      evalite.group('my-group', () => {
+        evalite('grouped-task', async () => {})
+      })
+
+      const tasks = getCollectedTasks()
+      expect(tasks[0].group).toBe('my-group')
+    })
+
+    it('collects multiple groups', () => {
+      setCurrentFile('/test/file.eval.ts')
+
+      evalite.group('group-1', () => {
+        evalite('task-1', async () => {})
+      })
+      evalite.group('group-2', () => {
+        evalite('task-2', async () => {})
+      })
+
+      const groups = getCollectedGroups()
+      expect(groups).toHaveLength(2)
     })
   })
 
   describe('resetRegistry()', () => {
-    it('clears all collected suites', () => {
+    it('clears all collected tasks and groups', () => {
       setCurrentFile('/test/file.eval.ts')
 
-      describeSuite('suite-1', () => {})
-      describeSuite('suite-2', () => {})
+      evalite('task-1', async () => {})
+      evalite.group('group-1', () => {
+        evalite('task-2', async () => {})
+      })
 
-      expect(getCollectedSuites()).toHaveLength(2)
+      expect(getCollectedTasks()).toHaveLength(2)
+      expect(getCollectedGroups()).toHaveLength(1)
 
       resetRegistry()
 
-      expect(getCollectedSuites()).toHaveLength(0)
+      expect(getCollectedTasks()).toHaveLength(0)
+      expect(getCollectedGroups()).toHaveLength(0)
     })
   })
 })

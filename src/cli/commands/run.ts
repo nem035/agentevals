@@ -1,10 +1,9 @@
-import type { EvaliteConfig, Suite } from '../../types.js'
+import type { EvaliteConfig, EvalTask, EvalGroup } from '../../types.js'
 import type { Reporter } from '../reporter/types.js'
 import { loadConfig } from '../../config/loader.js'
 import { discoverEvalFiles, filterByPattern } from '../../core/discovery.js'
 import { loadEvalFiles } from '../../core/loader.js'
-import { runSuites } from '../../core/runner.js'
-import { createProvidersFromConfig } from '../../ai/interface.js'
+import { runEvals } from '../../core/runner.js'
 import { createConsoleReporter } from '../reporter/console.js'
 import { createJsonReporter } from '../reporter/json.js'
 
@@ -44,14 +43,12 @@ export async function runCommand(
   // Discover eval files
   let files: string[]
   if (patterns.length > 0) {
-    // Use provided patterns
     files = await discoverEvalFiles({
       cwd,
       include: patterns.map((p) => (p.includes('*') ? p : `**/*${p}*`)),
       exclude: config.exclude,
     })
   } else {
-    // Use config patterns
     files = await discoverEvalFiles({
       cwd,
       include: config.include,
@@ -78,28 +75,25 @@ export async function runCommand(
     return 0
   }
 
-  // Create providers
-  const providers = createProvidersFromConfig(config)
-  if (providers.size === 0) {
-    console.error(
-      'No AI providers configured. Set ANTHROPIC_API_KEY or OPENAI_API_KEY environment variables.'
-    )
-    return 1
-  }
-
   // Load eval files
-  let suites: Suite[]
+  let tasks: EvalTask[]
+  let groups: EvalGroup[]
   try {
-    suites = await loadEvalFiles(files)
+    const loaded = await loadEvalFiles(files)
+    tasks = loaded.tasks
+    groups = loaded.groups
   } catch (error) {
     console.error('Failed to load eval files:', error)
     return 1
   }
 
-  if (suites.length === 0) {
-    console.log('No eval suites found in the discovered files.')
+  if (tasks.length === 0) {
+    console.log('No evals found in the discovered files.')
     return 0
   }
+
+  // Separate ungrouped tasks (tasks not belonging to any group)
+  const ungroupedTasks = tasks.filter((t) => !t.group)
 
   // Create reporter
   const reporterType = options.reporter ?? config.reporters?.[0] ?? 'console'
@@ -111,12 +105,11 @@ export async function runCommand(
   // Run evals
   reporter.onStart?.()
 
-  const result = await runSuites(suites, {
+  const result = await runEvals(groups, ungroupedTasks, {
     config,
-    providers,
     maxCost: options.maxCost,
-    onSuiteStart: reporter.onSuiteStart?.bind(reporter),
-    onSuiteEnd: reporter.onSuiteEnd?.bind(reporter),
+    onGroupStart: reporter.onGroupStart?.bind(reporter),
+    onGroupEnd: reporter.onGroupEnd?.bind(reporter),
     onTaskStart: reporter.onTaskStart?.bind(reporter),
     onTaskEnd: reporter.onTaskEnd?.bind(reporter),
   })

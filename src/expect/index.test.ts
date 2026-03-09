@@ -1,12 +1,19 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createExpect, ExpectationError } from './index.js'
-import type { ChatResult, GraderResult } from '../types.js'
+import type { AIResult, GraderResult } from '../types.js'
 
-function makeChatResult(content: string, toolCalls: ChatResult['toolCalls'] = []): ChatResult {
+function makeAIResult(
+  text: string,
+  toolCalls: AIResult['toolCalls'] = [],
+  toolResults: AIResult['toolResults'] = []
+): AIResult {
   return {
-    content,
+    text,
     toolCalls,
+    toolResults,
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+    totalUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+    steps: [],
   }
 }
 
@@ -19,7 +26,7 @@ describe('expect', () => {
 
   describe('toContain()', () => {
     it('passes when text is found (case insensitive)', () => {
-      const result = makeChatResult('Hello World!')
+      const result = makeAIResult('Hello World!')
       const e = createExpect(result, graderResults)
 
       e.toContain('hello')
@@ -29,7 +36,7 @@ describe('expect', () => {
     })
 
     it('passes with case sensitive match', () => {
-      const result = makeChatResult('Hello World!')
+      const result = makeAIResult('Hello World!')
       const e = createExpect(result, graderResults)
 
       e.toContain('Hello', { caseSensitive: true })
@@ -38,7 +45,7 @@ describe('expect', () => {
     })
 
     it('fails when text not found', () => {
-      const result = makeChatResult('Hello World!')
+      const result = makeAIResult('Hello World!')
       const e = createExpect(result, graderResults)
 
       expect(() => e.toContain('goodbye')).toThrow(ExpectationError)
@@ -46,7 +53,7 @@ describe('expect', () => {
     })
 
     it('fails case sensitive mismatch', () => {
-      const result = makeChatResult('Hello World!')
+      const result = makeAIResult('Hello World!')
       const e = createExpect(result, graderResults)
 
       expect(() => e.toContain('hello', { caseSensitive: true })).toThrow(ExpectationError)
@@ -55,7 +62,7 @@ describe('expect', () => {
 
   describe('not.toContain()', () => {
     it('passes when text is NOT found', () => {
-      const result = makeChatResult('Hello World!')
+      const result = makeAIResult('Hello World!')
       const e = createExpect(result, graderResults)
 
       e.not.toContain('goodbye')
@@ -64,7 +71,7 @@ describe('expect', () => {
     })
 
     it('fails when text IS found', () => {
-      const result = makeChatResult('Hello World!')
+      const result = makeAIResult('Hello World!')
       const e = createExpect(result, graderResults)
 
       expect(() => e.not.toContain('hello')).toThrow(ExpectationError)
@@ -73,7 +80,7 @@ describe('expect', () => {
 
   describe('toMatch()', () => {
     it('passes when regex matches', () => {
-      const result = makeChatResult('The answer is 42')
+      const result = makeAIResult('The answer is 42')
       const e = createExpect(result, graderResults)
 
       e.toMatch(/\d+/)
@@ -82,7 +89,7 @@ describe('expect', () => {
     })
 
     it('passes with string pattern', () => {
-      const result = makeChatResult('hello@example.com')
+      const result = makeAIResult('hello@example.com')
       const e = createExpect(result, graderResults)
 
       e.toMatch('[a-z]+@[a-z]+\\.[a-z]+')
@@ -91,7 +98,7 @@ describe('expect', () => {
     })
 
     it('fails when regex does not match', () => {
-      const result = makeChatResult('no numbers here')
+      const result = makeAIResult('no numbers here')
       const e = createExpect(result, graderResults)
 
       expect(() => e.toMatch(/\d+/)).toThrow(ExpectationError)
@@ -100,7 +107,7 @@ describe('expect', () => {
 
   describe('not.toMatch()', () => {
     it('passes when regex does NOT match', () => {
-      const result = makeChatResult('no numbers here')
+      const result = makeAIResult('no numbers here')
       const e = createExpect(result, graderResults)
 
       e.not.toMatch(/\d+/)
@@ -111,7 +118,7 @@ describe('expect', () => {
 
   describe('toAskQuestions()', () => {
     it('passes when question count is in range', () => {
-      const result = makeChatResult('What is your name? How can I help?')
+      const result = makeAIResult('What is your name? How can I help?')
       const e = createExpect(result, graderResults)
 
       e.toAskQuestions({ min: 1, max: 3 })
@@ -120,14 +127,14 @@ describe('expect', () => {
     })
 
     it('fails when too few questions', () => {
-      const result = makeChatResult('Hello there.')
+      const result = makeAIResult('Hello there.')
       const e = createExpect(result, graderResults)
 
       expect(() => e.toAskQuestions({ min: 1 })).toThrow(ExpectationError)
     })
 
     it('fails when too many questions', () => {
-      const result = makeChatResult('What? Why? How? When? Where?')
+      const result = makeAIResult('What? Why? How? When? Where?')
       const e = createExpect(result, graderResults)
 
       expect(() => e.toAskQuestions({ max: 2 })).toThrow(ExpectationError)
@@ -136,8 +143,8 @@ describe('expect', () => {
 
   describe('toolCalls.toInclude()', () => {
     it('passes when tool was called', () => {
-      const result = makeChatResult('Done', [
-        { name: 'search', arguments: { query: 'test' } },
+      const result = makeAIResult('Done', [
+        { type: 'tool-call', toolCallId: '1', toolName: 'search', input: { query: 'test' } },
       ])
       const e = createExpect(result, graderResults)
 
@@ -147,7 +154,7 @@ describe('expect', () => {
     })
 
     it('fails when tool was not called', () => {
-      const result = makeChatResult('Done', [])
+      const result = makeAIResult('Done', [])
       const e = createExpect(result, graderResults)
 
       expect(() => e.toolCalls.toInclude('search')).toThrow(ExpectationError)
@@ -156,7 +163,7 @@ describe('expect', () => {
 
   describe('toolCalls.not.toInclude()', () => {
     it('passes when tool was NOT called', () => {
-      const result = makeChatResult('Done', [])
+      const result = makeAIResult('Done', [])
       const e = createExpect(result, graderResults)
 
       e.toolCalls.not.toInclude('delete')
@@ -165,8 +172,8 @@ describe('expect', () => {
     })
 
     it('fails when tool WAS called', () => {
-      const result = makeChatResult('Done', [
-        { name: 'delete', arguments: {} },
+      const result = makeAIResult('Done', [
+        { type: 'tool-call', toolCallId: '1', toolName: 'delete', input: {} },
       ])
       const e = createExpect(result, graderResults)
 
@@ -176,8 +183,8 @@ describe('expect', () => {
 
   describe('toolCalls.toHaveArgs()', () => {
     it('passes when args match', () => {
-      const result = makeChatResult('Done', [
-        { name: 'search', arguments: { query: 'hello', limit: 10 } },
+      const result = makeAIResult('Done', [
+        { type: 'tool-call', toolCallId: '1', toolName: 'search', input: { query: 'hello', limit: 10 } },
       ])
       const e = createExpect(result, graderResults)
 
@@ -187,8 +194,8 @@ describe('expect', () => {
     })
 
     it('fails when args do not match', () => {
-      const result = makeChatResult('Done', [
-        { name: 'search', arguments: { query: 'hello' } },
+      const result = makeAIResult('Done', [
+        { type: 'tool-call', toolCallId: '1', toolName: 'search', input: { query: 'hello' } },
       ])
       const e = createExpect(result, graderResults)
 
@@ -196,7 +203,7 @@ describe('expect', () => {
     })
 
     it('fails when tool not called', () => {
-      const result = makeChatResult('Done', [])
+      const result = makeAIResult('Done', [])
       const e = createExpect(result, graderResults)
 
       expect(() => e.toolCalls.toHaveArgs('search', { query: 'test' })).toThrow(ExpectationError)
@@ -205,9 +212,11 @@ describe('expect', () => {
 
   describe('toolCalls.toHaveResult()', () => {
     it('passes when result matches', () => {
-      const result = makeChatResult('Done', [
-        { name: 'search', arguments: {}, result: { count: 5 } },
-      ])
+      const result = makeAIResult(
+        'Done',
+        [{ type: 'tool-call', toolCallId: '1', toolName: 'search', input: {} }],
+        [{ type: 'tool-result', toolCallId: '1', toolName: 'search', input: {}, output: { count: 5 } }]
+      )
       const e = createExpect(result, graderResults)
 
       e.toolCalls.toHaveResult('search', { count: 5 })
@@ -216,18 +225,22 @@ describe('expect', () => {
     })
 
     it('fails when result does not match', () => {
-      const result = makeChatResult('Done', [
-        { name: 'search', arguments: {}, result: { count: 5 } },
-      ])
+      const result = makeAIResult(
+        'Done',
+        [{ type: 'tool-call', toolCallId: '1', toolName: 'search', input: {} }],
+        [{ type: 'tool-result', toolCallId: '1', toolName: 'search', input: {}, output: { count: 5 } }]
+      )
       const e = createExpect(result, graderResults)
 
       expect(() => e.toolCalls.toHaveResult('search', { count: 10 })).toThrow(ExpectationError)
     })
 
     it('fails when no result (tool not executed)', () => {
-      const result = makeChatResult('Done', [
-        { name: 'search', arguments: {} },
-      ])
+      const result = makeAIResult(
+        'Done',
+        [{ type: 'tool-call', toolCallId: '1', toolName: 'search', input: {} }],
+        [] // no tool results
+      )
       const e = createExpect(result, graderResults)
 
       expect(() => e.toolCalls.toHaveResult('search', { count: 5 })).toThrow(ExpectationError)
@@ -236,11 +249,11 @@ describe('expect', () => {
 
   describe('to() custom grader', () => {
     it('passes with custom grader', () => {
-      const result = makeChatResult('Safe content')
+      const result = makeAIResult('Safe content')
       const e = createExpect(result, graderResults)
 
-      const customGrader = (r: ChatResult) => ({
-        pass: !r.content.includes('unsafe'),
+      const customGrader = (r: AIResult) => ({
+        pass: !r.text.includes('unsafe'),
         reason: 'Content is safe',
       })
 
@@ -250,11 +263,11 @@ describe('expect', () => {
     })
 
     it('fails with custom grader', () => {
-      const result = makeChatResult('unsafe content here')
+      const result = makeAIResult('unsafe content here')
       const e = createExpect(result, graderResults)
 
-      const customGrader = (r: ChatResult) => ({
-        pass: !r.content.includes('unsafe'),
+      const customGrader = (r: AIResult) => ({
+        pass: !r.text.includes('unsafe'),
         reason: 'Content is unsafe',
       })
 
@@ -262,10 +275,10 @@ describe('expect', () => {
     })
 
     it('supports async custom grader', async () => {
-      const result = makeChatResult('test content')
+      const result = makeAIResult('test content')
       const e = createExpect(result, graderResults)
 
-      const asyncGrader = async (_r: ChatResult) => ({
+      const asyncGrader = async (_r: AIResult) => ({
         pass: true,
         reason: 'Async check passed',
       })
@@ -278,7 +291,7 @@ describe('expect', () => {
 
   describe('fluent chaining', () => {
     it('supports chaining toContain calls', () => {
-      const result = makeChatResult('Hello World!')
+      const result = makeAIResult('Hello World!')
       const e = createExpect(result, graderResults)
 
       e.toContain('hello').toContain('world')
@@ -289,7 +302,7 @@ describe('expect', () => {
     })
 
     it('supports chaining toContain with toMatch', () => {
-      const result = makeChatResult('Hello World 123!')
+      const result = makeAIResult('Hello World 123!')
       const e = createExpect(result, graderResults)
 
       e.toContain('hello').toMatch(/\d+/)
@@ -300,7 +313,7 @@ describe('expect', () => {
     })
 
     it('supports chaining with not', () => {
-      const result = makeChatResult('Hello World!')
+      const result = makeAIResult('Hello World!')
       const e = createExpect(result, graderResults)
 
       e.toContain('hello').not.toContain('goodbye')
@@ -311,7 +324,7 @@ describe('expect', () => {
     })
 
     it('throws on first failing assertion in chain', () => {
-      const result = makeChatResult('Hello World!')
+      const result = makeAIResult('Hello World!')
       const e = createExpect(result, graderResults)
 
       expect(() => e.toContain('hello').toContain('xyz').toContain('world')).toThrow(ExpectationError)

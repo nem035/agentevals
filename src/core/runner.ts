@@ -1,15 +1,13 @@
 import type {
-  AIProvider,
   EvaliteConfig,
   EvalTask,
+  EvalGroup,
   GraderResult,
-  ProviderName,
   RunResult,
-  Suite,
-  SuiteResult,
+  GroupResult,
   TaskResult,
   TaskStatus,
-  TokenUsage,
+  UsageInfo,
   TrialResult,
 } from '../types.js'
 import { createEvalContext } from './context.js'
@@ -17,11 +15,10 @@ import { ExpectationError } from '../expect/index.js'
 
 export interface RunnerOptions {
   config: EvaliteConfig
-  providers: Map<ProviderName, AIProvider>
-  onSuiteStart?: (suite: Suite) => void
-  onSuiteEnd?: (suite: Suite, result: SuiteResult) => void
-  onTaskStart?: (task: EvalTask, suite: Suite) => void
-  onTaskEnd?: (task: EvalTask, suite: Suite, result: TaskResult) => void
+  onGroupStart?: (group: EvalGroup) => void
+  onGroupEnd?: (group: EvalGroup, result: GroupResult) => void
+  onTaskStart?: (task: EvalTask) => void
+  onTaskEnd?: (task: EvalTask, result: TaskResult) => void
   maxCost?: number
 }
 
@@ -35,31 +32,28 @@ interface CostTracker {
  */
 async function runTrial(
   task: EvalTask,
-  suite: Suite,
-  options: RunnerOptions,
+  groupOptions: EvalGroup['options'],
+  _options: RunnerOptions,
   costTracker: CostTracker
 ): Promise<TrialResult> {
-  const { config, providers } = options
   const startTime = Date.now()
   const graderResults: GraderResult[] = []
 
   // Create context with grader collection
   const context = createEvalContext(
-    providers,
-    config,
-    suite.options,
     task.options ?? {},
+    groupOptions,
     graderResults
   )
 
   let status: TaskStatus = 'passed'
   let error: string | undefined
-  let usage: TokenUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+  const usage: UsageInfo = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
   let costUsd = 0
 
   try {
     // Check cost limit before running
-    if (options.maxCost && costTracker.totalCost >= options.maxCost) {
+    if (_options.maxCost && costTracker.totalCost >= _options.maxCost) {
       costTracker.exceeded = true
       return {
         status: 'skipped',
@@ -81,9 +75,9 @@ async function runTrial(
     // Aggregate usage from grader results (for LLM judges)
     for (const r of graderResults) {
       if (r.usage) {
-        usage.inputTokens += r.usage.inputTokens
-        usage.outputTokens += r.usage.outputTokens
-        usage.totalTokens += r.usage.totalTokens
+        usage.inputTokens = (usage.inputTokens ?? 0) + (r.usage.inputTokens ?? 0)
+        usage.outputTokens = (usage.outputTokens ?? 0) + (r.usage.outputTokens ?? 0)
+        usage.totalTokens = (usage.totalTokens ?? 0) + (r.usage.totalTokens ?? 0)
       }
       if (r.costUsd) {
         costUsd += r.costUsd
@@ -119,7 +113,7 @@ async function runTrial(
  */
 async function runTask(
   task: EvalTask,
-  suite: Suite,
+  groupOptions: EvalGroup['options'],
   options: RunnerOptions,
   costTracker: CostTracker
 ): Promise<TaskResult> {
@@ -127,7 +121,7 @@ async function runTask(
   const trials = config.trials ?? 1
   const startTime = Date.now()
 
-  options.onTaskStart?.(task, suite)
+  options.onTaskStart?.(task)
 
   const trialResults: TrialResult[] = []
 
@@ -144,12 +138,11 @@ async function runTask(
       continue
     }
 
-    const result = await runTrial(task, suite, options, costTracker)
+    const result = await runTrial(task, groupOptions, options, costTracker)
     trialResults.push(result)
   }
 
-  // Determine overall status
-  // If any trial passed, consider it passed (pass@k logic)
+  // Determine overall status (pass@k logic)
   const anyPassed = trialResults.some((r) => r.status === 'passed')
   const allSkipped = trialResults.every((r) => r.status === 'skipped')
   const anyError = trialResults.some((r) => r.status === 'error')
@@ -174,81 +167,105 @@ async function runTask(
     duration,
   }
 
-  options.onTaskEnd?.(task, suite, result)
+  options.onTaskEnd?.(task, result)
 
   return result
 }
 
 /**
- * Run all tasks in a suite
+ * Run all tasks in a group
  */
-async function runSuite(
-  suite: Suite,
+async function runGroup(
+  group: EvalGroup,
   options: RunnerOptions,
   costTracker: CostTracker
-): Promise<SuiteResult> {
+): Promise<GroupResult> {
   const { config } = options
   const startTime = Date.now()
 
-  options.onSuiteStart?.(suite)
+  options.onGroupStart?.(group)
 
   const taskResults: TaskResult[] = []
 
   if (config.parallel) {
-    // Run tasks in parallel with concurrency limit
     const concurrency = config.maxConcurrency ?? 5
     const chunks: EvalTask[][] = []
 
-    for (let i = 0; i < suite.tasks.length; i += concurrency) {
-      chunks.push(suite.tasks.slice(i, i + concurrency))
+    for (let i = 0; i < group.tasks.length; i += concurrency) {
+      chunks.push(group.tasks.slice(i, i + concurrency))
     }
 
     for (const chunk of chunks) {
       const results = await Promise.all(
-        chunk.map((task) => runTask(task, suite, options, costTracker))
+        chunk.map((task) => runTask(task, group.options, options, costTracker))
       )
       taskResults.push(...results)
     }
   } else {
-    // Run tasks sequentially
-    for (const task of suite.tasks) {
-      const result = await runTask(task, suite, options, costTracker)
+    for (const task of group.tasks) {
+      const result = await runTask(task, group.options, options, costTracker)
       taskResults.push(result)
     }
   }
 
   const duration = Date.now() - startTime
 
-  const result: SuiteResult = {
-    name: suite.name,
-    file: suite.file,
+  const result: GroupResult = {
+    name: group.name,
     tasks: taskResults,
     duration,
   }
 
-  options.onSuiteEnd?.(suite, result)
+  options.onGroupEnd?.(group, result)
 
   return result
 }
 
 /**
- * Run all suites
+ * Run all groups and ungrouped tasks
  */
-export async function runSuites(
-  suites: Suite[],
+export async function runEvals(
+  groups: EvalGroup[],
+  ungroupedTasks: EvalTask[],
   options: RunnerOptions
 ): Promise<RunResult> {
   const startTime = Date.now()
   const costTracker: CostTracker = { totalCost: 0, exceeded: false }
-
-  // Set max cost from options or config
   const maxCost = options.maxCost ?? options.config.maxCost
 
-  const suiteResults: SuiteResult[] = []
+  const groupResults: GroupResult[] = []
+  const ungroupedResults: TaskResult[] = []
 
-  for (const suite of suites) {
-    const result = await runSuite(suite, { ...options, maxCost }, costTracker)
-    suiteResults.push(result)
+  // Run grouped tasks
+  for (const group of groups) {
+    const result = await runGroup(group, { ...options, maxCost }, costTracker)
+    groupResults.push(result)
+  }
+
+  // Run ungrouped tasks (they get empty options since each task has its own)
+  if (ungroupedTasks.length > 0) {
+    const { config } = options
+
+    if (config.parallel) {
+      const concurrency = config.maxConcurrency ?? 5
+      const chunks: EvalTask[][] = []
+
+      for (let i = 0; i < ungroupedTasks.length; i += concurrency) {
+        chunks.push(ungroupedTasks.slice(i, i + concurrency))
+      }
+
+      for (const chunk of chunks) {
+        const results = await Promise.all(
+          chunk.map((task) => runTask(task, {}, { ...options, maxCost }, costTracker))
+        )
+        ungroupedResults.push(...results)
+      }
+    } else {
+      for (const task of ungroupedTasks) {
+        const result = await runTask(task, {}, { ...options, maxCost }, costTracker)
+        ungroupedResults.push(result)
+      }
+    }
   }
 
   // Aggregate results
@@ -260,27 +277,30 @@ export async function runSuites(
   let totalOutputTokens = 0
   let totalCostUsd = 0
 
-  for (const suite of suiteResults) {
-    for (const task of suite.tasks) {
-      total++
-      switch (task.status) {
-        case 'passed':
-          passed++
-          break
-        case 'failed':
-        case 'error':
-          failed++
-          break
-        case 'skipped':
-          skipped++
-          break
-      }
+  const allTaskResults = [
+    ...groupResults.flatMap((g) => g.tasks),
+    ...ungroupedResults,
+  ]
 
-      for (const trial of task.trials) {
-        totalInputTokens += trial.usage.inputTokens
-        totalOutputTokens += trial.usage.outputTokens
-        totalCostUsd += trial.costUsd
-      }
+  for (const task of allTaskResults) {
+    total++
+    switch (task.status) {
+      case 'passed':
+        passed++
+        break
+      case 'failed':
+      case 'error':
+        failed++
+        break
+      case 'skipped':
+        skipped++
+        break
+    }
+
+    for (const trial of task.trials) {
+      totalInputTokens += trial.usage.inputTokens ?? 0
+      totalOutputTokens += trial.usage.outputTokens ?? 0
+      totalCostUsd += trial.costUsd
     }
   }
 
@@ -288,7 +308,8 @@ export async function runSuites(
 
   return {
     success: failed === 0,
-    suites: suiteResults,
+    groups: groupResults,
+    ungrouped: ungroupedResults,
     summary: {
       total,
       passed,

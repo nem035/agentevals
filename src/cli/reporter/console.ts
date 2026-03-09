@@ -1,5 +1,5 @@
 import pc from 'picocolors'
-import type { RunResult, TaskResult, EvalTask, Suite } from '../../types.js'
+import type { RunResult, TaskResult, EvalTask, EvalGroup } from '../../types.js'
 import type { Reporter } from './types.js'
 
 const PASS = pc.green('✓')
@@ -37,16 +37,15 @@ export function createConsoleReporter(options: ConsoleReporterOptions = {}): Rep
   return {
     onStart(): void {
       console.log()
-      console.log(pc.bold(pc.cyan(' AGENTEVAL')) + pc.dim(' v0.1.0'))
+      console.log(pc.bold(pc.cyan(' AGENTEVALS')) + pc.dim(' v0.2.0'))
       console.log()
     },
 
-    onSuiteStart(suite: Suite): void {
-      console.log(pc.dim(` ${suite.file}`))
-      console.log(`   ${pc.bold(suite.name)}`)
+    onGroupStart(group: EvalGroup): void {
+      console.log(`   ${pc.bold(group.name)}`)
     },
 
-    onTaskEnd(task: EvalTask, _suite: Suite, result: TaskResult): void {
+    onTaskEnd(task: EvalTask, result: TaskResult): void {
       const icon =
         result.status === 'passed'
           ? PASS
@@ -55,18 +54,19 @@ export function createConsoleReporter(options: ConsoleReporterOptions = {}): Rep
             : FAIL
 
       const duration = pc.dim(`(${formatDuration(result.duration)})`)
-      console.log(`     ${icon} ${task.name} ${duration}`)
+      const prefix = task.group ? '     ' : '   '
+      console.log(`${prefix}${icon} ${task.name} ${duration}`)
 
       // Show error details for failures
       if (result.status === 'failed' || result.status === 'error') {
+        const errorPrefix = task.group ? '       ' : '     '
         for (const trial of result.trials) {
           if (trial.error) {
-            console.log(pc.red(`       └─ ${trial.error}`))
+            console.log(pc.red(`${errorPrefix}└─ ${trial.error}`))
           }
-          // Show failed grader reasons
           for (const grader of trial.graderResults) {
             if (!grader.pass) {
-              console.log(pc.red(`       └─ ${grader.reason}`))
+              console.log(pc.red(`${errorPrefix}└─ ${grader.reason}`))
             }
           }
         }
@@ -74,15 +74,16 @@ export function createConsoleReporter(options: ConsoleReporterOptions = {}): Rep
 
       // Verbose mode: show all grader results
       if (verbose && result.status === 'passed') {
+        const verbosePrefix = task.group ? '       ' : '     '
         for (const trial of result.trials) {
           for (const grader of trial.graderResults) {
-            console.log(pc.dim(`       └─ ${grader.reason}`))
+            console.log(pc.dim(`${verbosePrefix}└─ ${grader.reason}`))
           }
         }
       }
     },
 
-    onSuiteEnd(): void {
+    onGroupEnd(): void {
       console.log()
     },
 
@@ -105,9 +106,10 @@ export function createConsoleReporter(options: ConsoleReporterOptions = {}): Rep
       console.log(` Tests:    ${passed}${failed}${skipped}${total}`)
       console.log(` Time:     ${formatDuration(result.duration)}`)
 
-      if (result.usage.totalTokens > 0) {
+      const totalTokens = (result.usage.totalTokens ?? 0)
+      if (totalTokens > 0) {
         console.log(
-          ` Tokens:   ${formatTokens(result.usage.inputTokens)} input, ${formatTokens(result.usage.outputTokens)} output`
+          ` Tokens:   ${formatTokens(result.usage.inputTokens ?? 0)} input, ${formatTokens(result.usage.outputTokens ?? 0)} output`
         )
       }
 

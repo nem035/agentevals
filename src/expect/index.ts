@@ -1,4 +1,12 @@
-import type { ChatResult, GraderResult, ToolCall, AIProvider, AIConfig } from '../types.js'
+import { generateText, type LanguageModel } from 'ai'
+import type {
+  AIResult,
+  GraderResult,
+  GraderFn,
+  JudgeOptions,
+  ToolCallInfo,
+  ToolResultInfo,
+} from '../types.js'
 
 export class ExpectationError extends Error {
   constructor(
@@ -143,12 +151,13 @@ export class ToolCallsExpect {
   private negated: boolean = false
 
   constructor(
-    private toolCalls: ToolCall[],
+    private toolCalls: readonly ToolCallInfo[],
+    private toolResults: readonly ToolResultInfo[],
     private graderResults: GraderResult[]
   ) {}
 
   get not(): ToolCallsExpect {
-    const instance = new ToolCallsExpect(this.toolCalls, this.graderResults)
+    const instance = new ToolCallsExpect(this.toolCalls, this.toolResults, this.graderResults)
     instance.negated = !this.negated
     return instance
   }
@@ -161,10 +170,10 @@ export class ToolCallsExpect {
     const pass = this.negated ? !called : called
     const reason = this.negated
       ? called
-        ? `Expected no tools to be called, but ${this.toolCalls.length} were called: ${this.toolCalls.map((t) => t.name).join(', ')}`
+        ? `Expected no tools to be called, but ${this.toolCalls.length} were called: ${this.toolCalls.map((t) => t.toolName).join(', ')}`
         : 'No tools were called (as expected)'
       : called
-        ? `Tools were called: ${this.toolCalls.map((t) => t.name).join(', ')}`
+        ? `Tools were called: ${this.toolCalls.map((t) => t.toolName).join(', ')}`
         : 'Expected at least one tool to be called, but none were'
 
     const result: GraderResult = { pass, reason }
@@ -194,7 +203,7 @@ export class ToolCallsExpect {
     }
 
     const actualCount = toolName
-      ? this.toolCalls.filter((tc) => tc.name === toolName).length
+      ? this.toolCalls.filter((tc) => tc.toolName === toolName).length
       : this.toolCalls.length
 
     const countMatches = actualCount === expectedCount
@@ -223,7 +232,7 @@ export class ToolCallsExpect {
    * Assert that a specific tool was called
    */
   toInclude(toolName: string): this {
-    const found = this.toolCalls.some((tc) => tc.name === toolName)
+    const found = this.toolCalls.some((tc) => tc.toolName === toolName)
     const pass = this.negated ? !found : found
     const reason = this.negated
       ? found
@@ -231,7 +240,7 @@ export class ToolCallsExpect {
         : `Tool "${toolName}" was not called (as expected)`
       : found
         ? `Tool "${toolName}" was called`
-        : `Expected tool "${toolName}" to be called, but it was not. Called tools: ${this.toolCalls.map((t) => t.name).join(', ') || '(none)'}`
+        : `Expected tool "${toolName}" to be called, but it was not. Called tools: ${this.toolCalls.map((t) => t.toolName).join(', ') || '(none)'}`
 
     const result: GraderResult = { pass, reason }
     this.graderResults.push(result)
@@ -248,7 +257,7 @@ export class ToolCallsExpect {
    * Supports matchers like objectContaining(), arrayContaining(), stringMatching()
    */
   toHaveArgs(toolName: string, expectedArgs: Record<string, unknown>): this {
-    const call = this.toolCalls.find((tc) => tc.name === toolName)
+    const call = this.toolCalls.find((tc) => tc.toolName === toolName)
 
     if (!call) {
       const result: GraderResult = {
@@ -264,7 +273,7 @@ export class ToolCallsExpect {
       return this
     }
 
-    const argsMatch = matchValue(call.arguments, expectedArgs)
+    const argsMatch = matchValue(call.input, expectedArgs)
 
     const pass = this.negated ? !argsMatch : argsMatch
     const expectedStr = Object.entries(expectedArgs)
@@ -276,7 +285,7 @@ export class ToolCallsExpect {
         : `Tool "${toolName}" has different args (as expected)`
       : argsMatch
         ? `Tool "${toolName}" called with expected args`
-        : `Tool "${toolName}" called with different args. Expected: {${expectedStr}}, Got: ${JSON.stringify(call.arguments)}`
+        : `Tool "${toolName}" called with different args. Expected: {${expectedStr}}, Got: ${JSON.stringify(call.input)}`
 
     const result: GraderResult = { pass, reason }
     this.graderResults.push(result)
@@ -292,12 +301,12 @@ export class ToolCallsExpect {
    * Assert that a tool returned a specific result
    */
   toHaveResult(toolName: string, expectedResult: unknown): this {
-    const call = this.toolCalls.find((tc) => tc.name === toolName)
+    const toolResult = this.toolResults.find((tr) => tr.toolName === toolName)
 
-    if (!call) {
+    if (!toolResult) {
       const result: GraderResult = {
         pass: this.negated,
-        reason: `Tool "${toolName}" was not called`,
+        reason: `Tool "${toolName}" has no result`,
       }
       this.graderResults.push(result)
       if (!result.pass) {
@@ -306,26 +315,14 @@ export class ToolCallsExpect {
       return this
     }
 
-    if (call.result === undefined) {
-      const result: GraderResult = {
-        pass: this.negated,
-        reason: `Tool "${toolName}" was called but not executed (no result)`,
-      }
-      this.graderResults.push(result)
-      if (!result.pass) {
-        throw new ExpectationError(result, 'toolCalls.toHaveResult')
-      }
-      return this
-    }
-
-    const resultMatches = matchValue(call.result, expectedResult)
+    const resultMatches = matchValue(toolResult.output, expectedResult)
     const pass = this.negated ? !resultMatches : resultMatches
 
     const graderResult: GraderResult = {
       pass,
       reason: pass
         ? `Tool "${toolName}" returned expected result`
-        : `Tool "${toolName}" returned different result. Expected: ${isMatcher(expectedResult) ? expectedResult.description() : JSON.stringify(expectedResult)}, Got: ${JSON.stringify(call.result)}`,
+        : `Tool "${toolName}" returned different result. Expected: ${isMatcher(expectedResult) ? expectedResult.description() : JSON.stringify(expectedResult)}, Got: ${JSON.stringify(toolResult.output)}`,
     }
     this.graderResults.push(graderResult)
 
@@ -339,32 +336,29 @@ export class ToolCallsExpect {
   /**
    * Get all calls to a specific tool
    */
-  getCalls(toolName?: string): ToolCall[] {
-    return toolName ? this.toolCalls.filter((tc) => tc.name === toolName) : this.toolCalls
+  getCalls(toolName?: string): readonly ToolCallInfo[] {
+    return toolName ? this.toolCalls.filter((tc) => tc.toolName === toolName) : this.toolCalls
   }
 }
 
-export interface JudgeOptions {
-  criteria: string
-  threshold?: number
-  judge?: AIConfig
-}
+// ============================================================================
+// Main Expect Class
+// ============================================================================
 
 export class Expect {
   private negated: boolean = false
   private _toolCalls: ToolCallsExpect
 
   constructor(
-    private result: ChatResult,
+    private result: AIResult,
     private graderResults: GraderResult[],
-    private judgeProvider?: AIProvider,
-    private judgeConfig?: AIConfig
+    private judgeModel?: LanguageModel
   ) {
-    this._toolCalls = new ToolCallsExpect(result.toolCalls, graderResults)
+    this._toolCalls = new ToolCallsExpect(result.toolCalls, result.toolResults, graderResults)
   }
 
   get not(): Expect {
-    const instance = new Expect(this.result, this.graderResults, this.judgeProvider, this.judgeConfig)
+    const instance = new Expect(this.result, this.graderResults, this.judgeModel)
     instance.negated = !this.negated
     instance._toolCalls = this._toolCalls.not
     return instance
@@ -376,7 +370,7 @@ export class Expect {
 
   toContain(text: string, options?: { caseSensitive?: boolean }): this {
     const caseSensitive = options?.caseSensitive ?? false
-    const content = caseSensitive ? this.result.content : this.result.content.toLowerCase()
+    const content = caseSensitive ? this.result.text : this.result.text.toLowerCase()
     const searchText = caseSensitive ? text : text.toLowerCase()
 
     const found = content.includes(searchText)
@@ -402,7 +396,7 @@ export class Expect {
 
   toMatch(pattern: RegExp | string): this {
     const regex = typeof pattern === 'string' ? new RegExp(pattern) : pattern
-    const matches = regex.test(this.result.content)
+    const matches = regex.test(this.result.text)
     const pass = this.negated ? !matches : matches
 
     const reason = this.negated
@@ -423,9 +417,9 @@ export class Expect {
     return this
   }
 
-  toAskQuestions(options: { min?: number; max?: number }): this {
-    const { min = 0, max = Infinity } = options
-    const questionCount = (this.result.content.match(/\?/g) || []).length
+  toAskQuestions(options?: { min?: number; max?: number }): this {
+    const { min = 1, max = Infinity } = options ?? {}
+    const questionCount = (this.result.text.match(/\?/g) || []).length
 
     const inRange = questionCount >= min && questionCount <= max
     const pass = this.negated ? !inRange : inRange
@@ -447,45 +441,43 @@ export class Expect {
   }
 
   async toPassJudge(criteriaOrOptions: string | JudgeOptions): Promise<this> {
-    if (!this.judgeProvider) {
-      throw new Error('LLM judge not configured. Make sure provider API keys are set.')
-    }
-
     const options: JudgeOptions =
       typeof criteriaOrOptions === 'string'
         ? { criteria: criteriaOrOptions }
         : criteriaOrOptions
 
     const { criteria, threshold = 0.5 } = options
+    const model = options.judge ?? this.judgeModel
 
-    // Call the judge
-    const judgeResult = await this.judgeProvider.chat({
-      model: options.judge?.model ?? this.judgeConfig?.model,
+    if (!model) {
+      throw new Error(
+        'No judge model configured. Pass a judge model to evalite() options or to toPassJudge({ judge: model }).'
+      )
+    }
+
+    // Call the judge model using AI SDK directly
+    const judgeResult = await generateText({
+      model,
       system: `You are an evaluation judge. Analyze the AI output and determine if it meets the given criteria.
 Respond with a JSON object containing:
 - "pass": boolean (true if the output meets the criteria)
 - "score": number between 0 and 1 (confidence score)
 - "reason": string (brief explanation of your judgment)
 
-Be objective and precise in your evaluation.`,
-      messages: [
-        {
-          role: 'user',
-          content: `## Criteria
+Be objective and precise in your evaluation. Only output the JSON object, nothing else.`,
+      prompt: `## Criteria
 ${criteria}
 
 ## AI Output to Evaluate
-${this.result.content}
+${this.result.text}
 
 ## Your Judgment (JSON)`,
-        },
-      ],
     })
 
     // Parse the judge response
     let judgment: { pass: boolean; score: number; reason: string }
     try {
-      const jsonMatch = judgeResult.content.match(/\{[\s\S]*\}/)
+      const jsonMatch = judgeResult.text.match(/\{[\s\S]*\}/)
       if (!jsonMatch) {
         throw new Error('No JSON found in judge response')
       }
@@ -494,12 +486,14 @@ ${this.result.content}
       judgment = {
         pass: false,
         score: 0,
-        reason: `Failed to parse judge response: ${judgeResult.content}`,
+        reason: `Failed to parse judge response: ${judgeResult.text}`,
       }
     }
 
     const passesThreshold = judgment.score >= threshold
     const pass = this.negated ? !passesThreshold : passesThreshold
+
+    const judgeUsage = judgeResult.usage
 
     const result: GraderResult = {
       pass,
@@ -511,7 +505,11 @@ ${this.result.content}
         : passesThreshold
           ? `Passed judge (score: ${judgment.score}). ${judgment.reason}`
           : `Failed judge (score: ${judgment.score}, threshold: ${threshold}). ${judgment.reason}`,
-      usage: judgeResult.usage,
+      usage: {
+        inputTokens: judgeUsage.inputTokens ?? 0,
+        outputTokens: judgeUsage.outputTokens ?? 0,
+        totalTokens: judgeUsage.totalTokens ?? 0,
+      },
     }
     this.graderResults.push(result)
 
@@ -522,11 +520,7 @@ ${this.result.content}
     return this
   }
 
-  to(grader: (result: ChatResult) => GraderResult | Promise<GraderResult>): Promise<this>
-  to(grader: (result: ChatResult) => GraderResult): this
-  to(
-    grader: (result: ChatResult) => GraderResult | Promise<GraderResult>
-  ): this | Promise<this> {
+  to(grader: GraderFn): this | Promise<this> {
     const graderResult = grader(this.result)
 
     if (graderResult instanceof Promise) {
@@ -567,10 +561,9 @@ ${this.result.content}
 }
 
 export function createExpect(
-  result: ChatResult,
+  result: AIResult,
   graderResults: GraderResult[],
-  judgeProvider?: AIProvider,
-  judgeConfig?: AIConfig
+  judgeModel?: LanguageModel
 ): Expect {
-  return new Expect(result, graderResults, judgeProvider, judgeConfig)
+  return new Expect(result, graderResults, judgeModel)
 }

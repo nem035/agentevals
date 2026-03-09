@@ -1,121 +1,126 @@
 /**
  * Core types for agentevals
+ *
+ * Designed to work natively with AI SDK (ai package) types.
+ * Users bring their own models and call generateText/streamText directly.
  */
 
-import type { AIConfig } from './providers.js'
-
-// Re-export AIConfig for convenience
-export type { AIConfig }
+import type { LanguageModel } from 'ai'
 
 // ============================================================================
-// Messages & Conversations
+// AI Result Interface
 // ============================================================================
 
-export type MessageRole = 'user' | 'assistant' | 'system'
+/**
+ * Minimal interface for what we need from an AI SDK result.
+ * Works with both GenerateTextResult (sync props) and
+ * StreamTextResult (PromiseLike props) after awaiting.
+ */
+export interface AIResult {
+  /** The generated text */
+  text: string
+  /** Tool calls made during generation */
+  toolCalls: readonly ToolCallInfo[]
+  /** Tool results from execution */
+  toolResults: readonly ToolResultInfo[]
+  /** Token usage information */
+  usage: UsageInfo
+  /** Total usage across all steps */
+  totalUsage: UsageInfo
+  /** Step-by-step details */
+  steps: readonly StepInfo[]
+}
 
-export interface Message {
-  role: MessageRole
-  content: string
+export interface ToolCallInfo {
+  type: 'tool-call'
+  toolCallId: string
+  toolName: string
+  input: unknown
+}
+
+export interface ToolResultInfo {
+  type: 'tool-result'
+  toolCallId: string
+  toolName: string
+  input: unknown
+  output: unknown
+}
+
+export interface UsageInfo {
+  inputTokens: number | undefined
+  outputTokens: number | undefined
+  totalTokens: number | undefined
+}
+
+export interface StepInfo {
+  text: string
+  toolCalls: readonly ToolCallInfo[]
+  toolResults: readonly ToolResultInfo[]
+  usage: UsageInfo
 }
 
 // ============================================================================
-// Tool Definitions & Calls
-// ============================================================================
-
-export interface ToolParameter {
-  name: string
-  type: 'string' | 'number' | 'boolean' | 'object' | 'array'
-  description?: string
-  required?: boolean
-}
-
-export interface ToolDefinition {
-  name: string
-  description?: string
-  parameters?: ToolParameter[]
-}
-
-export interface ToolWithExecutor {
-  definition: ToolDefinition
-  execute?: (args: Record<string, unknown>) => Promise<unknown> | unknown
-}
-
-export interface ToolCall {
-  name: string
-  arguments: Record<string, unknown>
-  result?: unknown
-}
-
-// ============================================================================
-// AI Provider Interface
-// ============================================================================
-
-export interface ChatOptions {
-  model?: string
-  system?: string
-  messages: Message[]
-  tools?: (ToolDefinition | ToolWithExecutor)[]
-  maxTokens?: number
-  temperature?: number
-}
-
-export interface TokenUsage {
-  inputTokens: number
-  outputTokens: number
-  totalTokens: number
-}
-
-export interface ChatResult {
-  content: string
-  toolCalls: ToolCall[]
-  usage: TokenUsage
-}
-
-export interface AIProvider {
-  chat(options: ChatOptions): Promise<ChatResult>
-}
-
-export type ProviderName = 'anthropic' | 'openai'
-
-// ============================================================================
-// Grader Results
+// Grading
 // ============================================================================
 
 export interface GraderResult {
   pass: boolean
   reason: string
   score?: number
-  usage?: TokenUsage
+  usage?: UsageInfo
   costUsd?: number
 }
 
+export type GraderFn = (result: AIResult) => GraderResult | Promise<GraderResult>
+
 // ============================================================================
-// Test Structure
+// Eval Structure
 // ============================================================================
 
-export interface SuiteOptions {
-  ai?: AIConfig
-  judge?: AIConfig
-  system?: string
-  tools?: (ToolDefinition | ToolWithExecutor)[]
-}
-
-export interface EvalOptions {
-  ai?: AIConfig
-  judge?: AIConfig
-  tools?: Record<string, ToolWithExecutor>
+export interface EvaliteOptions {
+  /** LLM model to use as a judge for toPassJudge() assertions */
+  judge?: LanguageModel
+  /** Timeout in milliseconds for this eval */
   timeout?: number
 }
 
-// Expect interface defined here to avoid circular imports
+export interface EvalContext {
+  /** Create assertions on an AI SDK result */
+  expect: (result: AIResult) => ExpectInterface
+}
+
+export type EvalFn = (context: EvalContext) => Promise<void>
+
+export interface EvalTask {
+  name: string
+  fn: EvalFn
+  options: EvaliteOptions
+  group?: string
+}
+
+export interface EvalGroup {
+  name: string
+  tasks: EvalTask[]
+  options: EvaliteOptions
+}
+
+// ============================================================================
+// Expect Interfaces
+// ============================================================================
+
 export interface ExpectInterface {
   not: ExpectInterface
   toolCalls: ToolCallsExpectInterface
+  /** Assert the text contains a substring (case-insensitive by default) */
   toContain(text: string, options?: { caseSensitive?: boolean }): ExpectInterface
+  /** Assert the text matches a regex pattern */
   toMatch(pattern: RegExp | string): ExpectInterface
-  toAskQuestions(options: { min?: number; max?: number }): ExpectInterface
-  toPassJudge(criteriaOrOptions: string | { criteria: string; threshold?: number; judge?: AIConfig }): Promise<ExpectInterface>
-  to(grader: (result: ChatResult) => GraderResult | Promise<GraderResult>): ExpectInterface | Promise<ExpectInterface>
+  /** Assert the response asks questions */
+  toAskQuestions(options?: { min?: number; max?: number }): ExpectInterface
+  /** Assert via LLM-as-judge evaluation */
+  toPassJudge(criteriaOrOptions: string | JudgeOptions): Promise<ExpectInterface>
+  /** Assert via a custom grader function */
+  to(grader: GraderFn): ExpectInterface | Promise<ExpectInterface>
 }
 
 export interface ToolCallsExpectInterface {
@@ -126,30 +131,14 @@ export interface ToolCallsExpectInterface {
   toInclude(toolName: string): ToolCallsExpectInterface
   toHaveArgs(toolName: string, expectedArgs: Record<string, unknown>): ToolCallsExpectInterface
   toHaveResult(toolName: string, expectedResult: unknown): ToolCallsExpectInterface
-  getCalls(toolName?: string): ToolCall[]
+  getCalls(toolName?: string): readonly ToolCallInfo[]
 }
 
-export interface EvalContext {
-  ai: {
-    chat(messages: Message[]): Promise<ChatResult>
-    prompt(content: string): Promise<ChatResult>
-  }
-  expect: (result: ChatResult) => ExpectInterface
-}
-
-export type EvalFn = (context: EvalContext) => Promise<void>
-
-export interface EvalTask {
-  name: string
-  fn: EvalFn
-  options?: EvalOptions
-}
-
-export interface Suite {
-  name: string
-  options: SuiteOptions
-  tasks: EvalTask[]
-  file: string
+export interface JudgeOptions {
+  criteria: string
+  threshold?: number
+  /** Override the judge model for this specific assertion */
+  judge?: LanguageModel
 }
 
 // ============================================================================
@@ -163,7 +152,7 @@ export interface TrialResult {
   duration: number
   graderResults: GraderResult[]
   error?: string
-  usage: TokenUsage
+  usage: UsageInfo
   costUsd: number
 }
 
@@ -174,23 +163,23 @@ export interface TaskResult {
   duration: number
 }
 
-export interface SuiteResult {
+export interface GroupResult {
   name: string
-  file: string
   tasks: TaskResult[]
   duration: number
 }
 
 export interface RunResult {
   success: boolean
-  suites: SuiteResult[]
+  groups: GroupResult[]
+  ungrouped: TaskResult[]
   summary: {
     total: number
     passed: number
     failed: number
     skipped: number
   }
-  usage: TokenUsage
+  usage: UsageInfo
   costUsd: number
   duration: number
 }
@@ -199,16 +188,7 @@ export interface RunResult {
 // Configuration
 // ============================================================================
 
-export interface ProviderConfig {
-  apiKey?: string
-  baseURL?: string
-}
-
 export interface EvaliteConfig {
-  providers?: {
-    anthropic?: ProviderConfig
-    openai?: ProviderConfig
-  }
   include?: string[]
   exclude?: string[]
   trials?: number

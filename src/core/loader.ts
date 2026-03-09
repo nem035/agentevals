@@ -1,31 +1,34 @@
 import { pathToFileURL } from 'node:url'
-import type { Suite } from '../types.js'
+import type { EvalTask, EvalGroup } from '../types.js'
 import {
   resetRegistry,
   setCurrentFile,
-  getCollectedSuites,
+  getCollectedTasks,
+  getCollectedGroups,
 } from './registry.js'
 
 /**
- * Load eval files and collect their suites
+ * Load eval files and collect their tasks and groups
  */
-export async function loadEvalFiles(files: string[]): Promise<Suite[]> {
-  const allSuites: Suite[] = []
+export async function loadEvalFiles(
+  files: string[]
+): Promise<{ tasks: EvalTask[]; groups: EvalGroup[] }> {
+  const allTasks: EvalTask[] = []
+  const allGroups: EvalGroup[] = []
 
   for (const file of files) {
     resetRegistry()
     setCurrentFile(file)
 
-    // Import the file - this will execute describe/eval calls
+    // Import the file - this will execute evalite() / evalite.group() calls
     // which populate the registry
     const fileUrl = pathToFileURL(file).href
     await import(fileUrl)
 
-    // Collect suites from this file
-    const suites = getCollectedSuites()
-    allSuites.push(...suites)
+    allTasks.push(...getCollectedTasks())
+    allGroups.push(...getCollectedGroups())
   }
 
   resetRegistry()
-  return allSuites
+  return { tasks: allTasks, groups: allGroups }
 }
