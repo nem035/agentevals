@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tool Call Testing - agentevals Cookbook</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <a href="../index.html" class="logo">agent<span>evals</span></a>
+    <nav>
+      <a href="../index.html">Home</a>
+      <a href="../cookbook.html" class="active">Cookbook</a>
+      <a href="../api.html">API</a>
+      <a href="https://github.com/nem035/agentevals" class="github">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container">
+  <div class="cookbook-page">
+    <div class="breadcrumb"><a href="../cookbook.html">Cookbook</a> / Tool Call Testing</div>
+    <h1>Tool Call Testing</h1>
+    <p class="subtitle">Demonstrates testing AI tool usage with createMockExecutor, createSpyExecutor, and tool call assertions.</p>
+
+    <h2>Setup</h2>
+    <p>Import <code>evalite</code>, <code>createMockExecutor</code>, <code>createSpyExecutor</code>, and <code>matchers</code> from agentevals. You also need <code>tool</code> from the AI SDK and <code>zod</code> for parameter schemas.</p>
+    <pre><span class="kw">import</span> { <span class="fn">evalite</span>, <span class="fn">createMockExecutor</span>, <span class="fn">createSpyExecutor</span>, matchers } <span class="kw">from</span> <span class="st">'@nem035/agentevals'</span>
+<span class="kw">import</span> { <span class="fn">anthropic</span> } <span class="kw">from</span> <span class="st">'@ai-sdk/anthropic'</span>
+<span class="kw">import</span> { <span class="fn">generateText</span>, <span class="fn">tool</span> } <span class="kw">from</span> <span class="st">'ai'</span>
+<span class="kw">import</span> { z } <span class="kw">from</span> <span class="st">'zod'</span></pre>
+
+    <h2>Basic Tool Call Testing with Mock Executor</h2>
+    <p>Use <code>createMockExecutor</code> to create a mock that returns a fixed value. Then assert the tool was called and check its arguments using <code>matchers</code>.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'calls weather tool for weather questions'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> mockExecute <span class="op">=</span> <span class="fn">createMockExecutor</span>({ temp: <span class="nr">72</span>, condition: <span class="st">'sunny'</span> })
+
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'You are a weather assistant. Always use the getWeather tool to answer weather questions.'</span>,
+    prompt: <span class="st">'What is the weather in Tokyo?'</span>,
+    tools: {
+      getWeather: <span class="fn">tool</span>({
+        description: <span class="st">'Get current weather for a location'</span>,
+        parameters: z.<span class="fn">object</span>({
+          location: z.<span class="fn">string</span>().<span class="fn">describe</span>(<span class="st">'City name'</span>),
+        }),
+        execute: mockExecute,
+      }),
+    },
+    maxSteps: <span class="nr">3</span>,
+  })
+
+  <span class="cm">// Assert the tool was called</span>
+  <span class="fn">expect</span>(result).toolCalls.<span class="fn">toInclude</span>(<span class="st">'getWeather'</span>)
+
+  <span class="cm">// Assert arguments using matchers</span>
+  <span class="fn">expect</span>(result).toolCalls.<span class="fn">toHaveArgs</span>(<span class="st">'getWeather'</span>, {
+    location: matchers.<span class="fn">stringMatching</span>(<span class="op">/</span><span class="st">tokyo</span><span class="op">/</span>i),
+  })
+
+  <span class="cm">// Verify mock recorded the call</span>
+  console.<span class="fn">log</span>(<span class="st">'Mock calls:'</span>, mockExecute.calls)
+})</pre>
+
+    <h2>Asserting a Tool Was NOT Called</h2>
+    <p>Use <code>.not.toHaveBeenCalled()</code> to verify the model did not invoke any tools when it shouldn't.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'does not use tools for simple questions'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    prompt: <span class="st">'What is 2 + 2?'</span>,
+    tools: {
+      getWeather: <span class="fn">tool</span>({
+        description: <span class="st">'Get weather for a location'</span>,
+        parameters: z.<span class="fn">object</span>({ location: z.<span class="fn">string</span>() }),
+        execute: <span class="kw">async</span> () <span class="op">=&gt;</span> ({ temp: <span class="nr">72</span> }),
+      }),
+    },
+  })
+
+  <span class="fn">expect</span>(result).toolCalls.not.<span class="fn">toHaveBeenCalled</span>()
+})</pre>
+
+    <h2>Spy Executor: Wrap Real Logic and Record Calls</h2>
+    <p>Use <code>createSpyExecutor</code> to wrap a real function. The spy records both the calls and their results while executing the actual logic.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'spy on calculator tool'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> spy <span class="op">=</span> <span class="fn">createSpyExecutor</span>(<span class="kw">async</span> ({ a, b, op }<span class="ty">: { a: number; b: number; op: string }</span>) <span class="op">=&gt;</span> {
+    <span class="kw">switch</span> (op) {
+      <span class="kw">case</span> <span class="st">'add'</span>: <span class="kw">return</span> a <span class="op">+</span> b
+      <span class="kw">case</span> <span class="st">'subtract'</span>: <span class="kw">return</span> a <span class="op">-</span> b
+      <span class="kw">case</span> <span class="st">'multiply'</span>: <span class="kw">return</span> a <span class="op">*</span> b
+      <span class="kw">case</span> <span class="st">'divide'</span>: <span class="kw">return</span> a <span class="op">/</span> b
+      <span class="kw">default</span>: <span class="kw">throw</span> <span class="kw">new</span> <span class="fn">Error</span>(<span class="st">`Unknown op: ${op}`</span>)
+    }
+  })
+
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'Use the calculator tool to perform math operations.'</span>,
+    prompt: <span class="st">'What is 15 multiplied by 4?'</span>,
+    tools: {
+      calculator: <span class="fn">tool</span>({
+        description: <span class="st">'Perform a math operation'</span>,
+        parameters: z.<span class="fn">object</span>({
+          a: z.<span class="fn">number</span>(),
+          b: z.<span class="fn">number</span>(),
+          op: z.<span class="fn">enum</span>([<span class="st">'add'</span>, <span class="st">'subtract'</span>, <span class="st">'multiply'</span>, <span class="st">'divide'</span>]),
+        }),
+        execute: spy,
+      }),
+    },
+    maxSteps: <span class="nr">3</span>,
+  })
+
+  <span class="fn">expect</span>(result).toolCalls.<span class="fn">toInclude</span>(<span class="st">'calculator'</span>)
+  <span class="fn">expect</span>(result).<span class="fn">toContain</span>(<span class="st">'60'</span>)
+
+  <span class="cm">// Spy records both calls and results</span>
+  console.<span class="fn">log</span>(<span class="st">'Spy calls:'</span>, spy.calls)
+  console.<span class="fn">log</span>(<span class="st">'Spy results:'</span>, spy.results)
+})</pre>
+
+    <h2>Call Count Assertions</h2>
+    <p>Use <code>toHaveCallCount</code> to assert a tool was called an exact number of times.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'calls tool the expected number of times'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> mockExecute <span class="op">=</span> <span class="fn">createMockExecutor</span>({ population: <span class="st">'14 million'</span> })
+
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'Use the lookup tool for each city mentioned. Answer questions about cities.'</span>,
+    prompt: <span class="st">'What is the population of Tokyo?'</span>,
+    tools: {
+      lookup: <span class="fn">tool</span>({
+        description: <span class="st">'Look up facts about a city'</span>,
+        parameters: z.<span class="fn">object</span>({ city: z.<span class="fn">string</span>() }),
+        execute: mockExecute,
+      }),
+    },
+    maxSteps: <span class="nr">3</span>,
+  })
+
+  <span class="cm">// Assert specific tool was called exactly once</span>
+  <span class="fn">expect</span>(result).toolCalls.<span class="fn">toHaveCallCount</span>(<span class="st">'lookup'</span>, <span class="nr">1</span>)
+})</pre>
+
+    <h2>Tool Result Assertions</h2>
+    <p>Use <code>toHaveResult</code> with <code>matchers.objectContaining</code> to verify what a tool returned.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'tool returns expected result'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> mockExecute <span class="op">=</span> <span class="fn">createMockExecutor</span>({
+    available: <span class="nr">true</span>,
+    price: <span class="st">'$120/night'</span>,
+    rating: <span class="nr">4.5</span>,
+  })
+
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'You are a hotel booking assistant. Use the searchHotels tool.'</span>,
+    prompt: <span class="st">'Find me a hotel in Paris.'</span>,
+    tools: {
+      searchHotels: <span class="fn">tool</span>({
+        description: <span class="st">'Search for hotels in a city'</span>,
+        parameters: z.<span class="fn">object</span>({ city: z.<span class="fn">string</span>() }),
+        execute: mockExecute,
+      }),
+    },
+    maxSteps: <span class="nr">3</span>,
+  })
+
+  <span class="fn">expect</span>(result).toolCalls.<span class="fn">toHaveResult</span>(<span class="st">'searchHotels'</span>,
+    matchers.<span class="fn">objectContaining</span>({ available: <span class="nr">true</span> })
+  )
+})</pre>
+
+    <h2>Flexible Argument Matching with Matchers</h2>
+    <p>Use <code>matchers.stringMatching</code> and other matchers to flexibly check tool arguments without exact matching.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'flexible argument matching'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> mockExecute <span class="op">=</span> <span class="fn">createMockExecutor</span>({ results: [<span class="st">'item1'</span>, <span class="st">'item2'</span>] })
+
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'Use the search tool to find items.'</span>,
+    prompt: <span class="st">'Search for red shoes in size 10.'</span>,
+    tools: {
+      search: <span class="fn">tool</span>({
+        description: <span class="st">'Search for products'</span>,
+        parameters: z.<span class="fn">object</span>({
+          query: z.<span class="fn">string</span>(),
+          category: z.<span class="fn">string</span>().<span class="fn">optional</span>(),
+          maxResults: z.<span class="fn">number</span>().<span class="fn">optional</span>(),
+        }),
+        execute: mockExecute,
+      }),
+    },
+    maxSteps: <span class="nr">3</span>,
+  })
+
+  <span class="cm">// Use matchers for flexible assertions</span>
+  <span class="fn">expect</span>(result).toolCalls.<span class="fn">toHaveArgs</span>(<span class="st">'search'</span>, {
+    query: matchers.<span class="fn">stringMatching</span>(<span class="op">/</span><span class="st">shoes</span><span class="op">/</span>i),
+    <span class="cm">// matchers.anything() matches any value (or absence)</span>
+  })
+})</pre>
+
+    <h2>Full Source</h2>
+    <p>See the complete example: <a href="https://github.com/nem035/agentevals/blob/main/examples/cookbook/tool-calls.eval.ts" style="color: var(--accent);">tool-calls.eval.ts</a></p>
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    <p>MIT License &middot; <a href="https://github.com/nem035/agentevals">GitHub</a> &middot; <a href="https://www.npmjs.com/package/@nem035/agentevals">npm</a></p>
+  </div>
+</footer>
+
+</body>
+</html>

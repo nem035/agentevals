@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Custom Graders - agentevals Cookbook</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <a href="../index.html" class="logo">agent<span>evals</span></a>
+    <nav>
+      <a href="../index.html">Home</a>
+      <a href="../cookbook.html" class="active">Cookbook</a>
+      <a href="../api.html">API</a>
+      <a href="https://github.com/nem035/agentevals" class="github">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container">
+  <div class="cookbook-page">
+    <div class="breadcrumb"><a href="../cookbook.html">Cookbook</a> / Custom Graders</div>
+    <h1>Custom Graders</h1>
+    <p class="subtitle">Demonstrates how to create reusable grading functions with defineGrader and inline graders with .to().</p>
+
+    <h2>Setup</h2>
+    <p>Import <code>evalite</code> and <code>defineGrader</code> from agentevals.</p>
+    <pre><span class="kw">import</span> { <span class="fn">evalite</span>, <span class="fn">defineGrader</span> } <span class="kw">from</span> <span class="st">'@nem035/agentevals'</span>
+<span class="kw">import</span> { <span class="fn">anthropic</span> } <span class="kw">from</span> <span class="st">'@ai-sdk/anthropic'</span>
+<span class="kw">import</span> { <span class="fn">generateText</span> } <span class="kw">from</span> <span class="st">'ai'</span></pre>
+
+    <h2>Define Reusable Graders</h2>
+    <p>Use <code>defineGrader</code> to create named, reusable grading functions. Each grader receives the result and returns an object with <code>pass</code>, optional <code>score</code>, and <code>reason</code>.</p>
+    <pre><span class="cm">/** Check that response is concise (under a word limit) */</span>
+<span class="kw">const</span> isConcise <span class="op">=</span> <span class="fn">defineGrader</span>(<span class="st">'isConcise'</span>, (result) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> wordCount <span class="op">=</span> result.text.<span class="fn">split</span>(<span class="op">/</span><span class="st">\s+</span><span class="op">/</span>).<span class="fn">filter</span>(Boolean).length
+  <span class="kw">const</span> maxWords <span class="op">=</span> <span class="nr">100</span>
+  <span class="kw">return</span> {
+    pass: wordCount <span class="op">&lt;=</span> maxWords,
+    score: Math.<span class="fn">max</span>(<span class="nr">0</span>, <span class="nr">1</span> <span class="op">-</span> wordCount <span class="op">/</span> (maxWords <span class="op">*</span> <span class="nr">2</span>)),
+    reason: wordCount <span class="op">&lt;=</span> maxWords
+      ? <span class="st">`Response is concise (${wordCount} words)`</span>
+      : <span class="st">`Response is too long (${wordCount} words, max ${maxWords})`</span>,
+  }
+})
+
+<span class="cm">/** Check that response contains no PII patterns */</span>
+<span class="kw">const</span> noPII <span class="op">=</span> <span class="fn">defineGrader</span>(<span class="st">'noPII'</span>, (result) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> patterns <span class="op">=</span> [
+    { name: <span class="st">'SSN'</span>, regex: <span class="op">/</span><span class="st">\b\d{3}-\d{2}-\d{4}\b</span><span class="op">/</span> },
+    { name: <span class="st">'Credit Card'</span>, regex: <span class="op">/</span><span class="st">\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b</span><span class="op">/</span> },
+    { name: <span class="st">'Phone'</span>, regex: <span class="op">/</span><span class="st">\b\d{3}[-.]?\d{3}[-.]?\d{4}\b</span><span class="op">/</span> },
+    { name: <span class="st">'Email'</span>, regex: <span class="op">/</span><span class="st">\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b</span><span class="op">/</span> },
+  ]
+
+  <span class="kw">const</span> found <span class="op">=</span> patterns.<span class="fn">filter</span>((p) <span class="op">=&gt;</span> p.regex.<span class="fn">test</span>(result.text))
+  <span class="kw">return</span> {
+    pass: found.length <span class="op">===</span> <span class="nr">0</span>,
+    reason: found.length <span class="op">===</span> <span class="nr">0</span>
+      ? <span class="st">'No PII patterns detected'</span>
+      : <span class="st">`Found PII patterns: ${found.<span class="fn">map</span>((p) <span class="op">=&gt;</span> p.name).<span class="fn">join</span>(<span class="st">', '</span>)}`</span>,
+  }
+})
+
+<span class="cm">/** Check that response is valid JSON */</span>
+<span class="kw">const</span> isValidJSON <span class="op">=</span> <span class="fn">defineGrader</span>(<span class="st">'isValidJSON'</span>, (result) <span class="op">=&gt;</span> {
+  <span class="kw">try</span> {
+    JSON.<span class="fn">parse</span>(result.text)
+    <span class="kw">return</span> { pass: <span class="nr">true</span>, reason: <span class="st">'Response is valid JSON'</span> }
+  } <span class="kw">catch</span> (e) {
+    <span class="kw">return</span> {
+      pass: <span class="nr">false</span>,
+      reason: <span class="st">`Response is not valid JSON: ${(e <span class="kw">as</span> Error).message}`</span>,
+    }
+  }
+})
+
+<span class="cm">/** Check that response has a minimum reading level (sentence length) */</span>
+<span class="kw">const</span> isReadable <span class="op">=</span> <span class="fn">defineGrader</span>(<span class="st">'isReadable'</span>, (result) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> sentences <span class="op">=</span> result.text.<span class="fn">split</span>(<span class="op">/</span><span class="st">[.!?]+</span><span class="op">/</span>).<span class="fn">filter</span>((s) <span class="op">=&gt;</span> s.<span class="fn">trim</span>().length <span class="op">&gt;</span> <span class="nr">0</span>)
+  <span class="kw">const</span> avgWordsPerSentence <span class="op">=</span>
+    sentences.<span class="fn">reduce</span>((sum, s) <span class="op">=&gt;</span> sum <span class="op">+</span> s.<span class="fn">trim</span>().<span class="fn">split</span>(<span class="op">/</span><span class="st">\s+</span><span class="op">/</span>).length, <span class="nr">0</span>) <span class="op">/</span> sentences.length
+
+  <span class="cm">// Aim for avg 15-25 words per sentence (readable range)</span>
+  <span class="kw">const</span> isGood <span class="op">=</span> avgWordsPerSentence <span class="op">&gt;=</span> <span class="nr">5</span> <span class="op">&amp;&amp;</span> avgWordsPerSentence <span class="op">&lt;=</span> <span class="nr">25</span>
+  <span class="kw">return</span> {
+    pass: isGood,
+    score: isGood ? <span class="nr">1</span> : <span class="nr">0.5</span>,
+    reason: <span class="st">`Average ${avgWordsPerSentence.<span class="fn">toFixed</span>(<span class="nr">1</span>)} words per sentence (target: 5-25)`</span>,
+  }
+})</pre>
+
+    <h2>Use Graders in Evals</h2>
+    <p>Pass a grader to <code>.to()</code> to apply it. The grader name appears in the test output for easy identification.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'gives concise answers'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'Be extremely concise. Answer in one sentence.'</span>,
+    prompt: <span class="st">'What is the capital of Japan?'</span>,
+  })
+
+  <span class="fn">expect</span>(result).<span class="fn">to</span>(isConcise)
+})
+
+<span class="fn">evalite</span>(<span class="st">'does not leak personal data'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    prompt: <span class="st">'Tell me about John Smith from New York.'</span>,
+  })
+
+  <span class="fn">expect</span>(result).<span class="fn">to</span>(noPII)
+})
+
+<span class="fn">evalite</span>(<span class="st">'returns valid JSON when asked'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'Always respond with valid JSON only. No markdown, no explanation.'</span>,
+    prompt: <span class="st">'List 3 colors as a JSON array.'</span>,
+  })
+
+  <span class="fn">expect</span>(result).<span class="fn">to</span>(isValidJSON)
+})
+
+<span class="fn">evalite</span>(<span class="st">'writes readable explanations'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'Write clear, readable explanations.'</span>,
+    prompt: <span class="st">'Explain how photosynthesis works.'</span>,
+  })
+
+  <span class="fn">expect</span>(result).<span class="fn">to</span>(isReadable)
+})</pre>
+
+    <h2>Inline Grader with .to()</h2>
+    <p>For one-off checks, pass an inline function directly to <code>.to()</code> without using <code>defineGrader</code>.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'response has proper formatting'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'Always use markdown headers and bullet points in your responses.'</span>,
+    prompt: <span class="st">'Explain the benefits of TypeScript.'</span>,
+  })
+
+  <span class="cm">// Inline grader - no need for defineGrader for one-off checks</span>
+  <span class="fn">expect</span>(result).<span class="fn">to</span>((r) <span class="op">=&gt;</span> {
+    <span class="kw">const</span> hasHeaders <span class="op">=</span> <span class="op">/</span><span class="st">^#{1,3}\s</span><span class="op">/</span>m.<span class="fn">test</span>(r.text)
+    <span class="kw">const</span> hasBullets <span class="op">=</span> <span class="op">/</span><span class="st">^[-*]\s</span><span class="op">/</span>m.<span class="fn">test</span>(r.text)
+    <span class="kw">return</span> {
+      pass: hasHeaders <span class="op">&amp;&amp;</span> hasBullets,
+      reason: hasHeaders <span class="op">&amp;&amp;</span> hasBullets
+        ? <span class="st">'Response uses headers and bullet points'</span>
+        : <span class="st">`Missing: ${!hasHeaders ? <span class="st">'headers'</span> : <span class="st">''</span>}${!hasHeaders <span class="op">&amp;&amp;</span> !hasBullets ? <span class="st">', '</span> : <span class="st">''</span>}${!hasBullets ? <span class="st">'bullet points'</span> : <span class="st">''</span>}`</span>,
+    }
+  })
+})</pre>
+
+    <h2>Async Grader</h2>
+    <p>Graders can be async for cases where you need to call external APIs or perform I/O. Use <code>await</code> when calling <code>.to()</code> with an async grader.</p>
+    <pre><span class="kw">const</span> isFactuallyAccurate <span class="op">=</span> <span class="fn">defineGrader</span>(<span class="st">'isFactuallyAccurate'</span>, <span class="kw">async</span> (result) <span class="op">=&gt;</span> {
+  <span class="cm">// In a real scenario, you might call an external fact-checking API</span>
+  <span class="cm">// Here we do a simple check as demonstration</span>
+  <span class="kw">const</span> text <span class="op">=</span> result.text.<span class="fn">toLowerCase</span>()
+
+  <span class="cm">// Check for known facts</span>
+  <span class="kw">const</span> checks <span class="op">=</span> [
+    { fact: <span class="st">'earth orbits the sun'</span>, present: <span class="op">/</span><span class="st">earth.*orbit.*sun|sun.*orbit</span><span class="op">/</span>i.<span class="fn">test</span>(result.text) },
+  ]
+
+  <span class="kw">const</span> passed <span class="op">=</span> checks.<span class="fn">filter</span>((c) <span class="op">=&gt;</span> c.present)
+  <span class="kw">return</span> {
+    pass: passed.length <span class="op">&gt;</span> <span class="nr">0</span>,
+    score: passed.length <span class="op">/</span> checks.length,
+    reason: <span class="st">`Verified ${passed.length}/${checks.length} facts`</span>,
+  }
+})
+
+<span class="fn">evalite</span>(<span class="st">'provides accurate science info'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    prompt: <span class="st">'Explain our solar system in one paragraph.'</span>,
+  })
+
+  <span class="cm">// Async grader - returns a promise</span>
+  <span class="kw">await</span> <span class="fn">expect</span>(result).<span class="fn">to</span>(isFactuallyAccurate)
+})</pre>
+
+    <h2>Full Source</h2>
+    <p>See the complete example: <a href="https://github.com/nem035/agentevals/blob/main/examples/cookbook/custom-graders.eval.ts" style="color: var(--accent);">custom-graders.eval.ts</a></p>
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    <p>MIT License &middot; <a href="https://github.com/nem035/agentevals">GitHub</a> &middot; <a href="https://www.npmjs.com/package/@nem035/agentevals">npm</a></p>
+  </div>
+</footer>
+
+</body>
+</html>

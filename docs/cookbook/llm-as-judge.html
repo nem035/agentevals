@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLM-as-Judge - agentevals Cookbook</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <a href="../index.html" class="logo">agent<span>evals</span></a>
+    <nav>
+      <a href="../index.html">Home</a>
+      <a href="../cookbook.html" class="active">Cookbook</a>
+      <a href="../api.html">API</a>
+      <a href="https://github.com/nem035/agentevals" class="github">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container">
+  <div class="cookbook-page">
+    <div class="breadcrumb"><a href="../cookbook.html">Cookbook</a> / LLM-as-Judge</div>
+    <h1>LLM-as-Judge</h1>
+    <p class="subtitle">Demonstrates using a separate LLM model to evaluate responses against nuanced criteria that are hard to express with simple string matching.</p>
+
+    <h2>Setup</h2>
+    <p>Import <code>evalite</code> and configure your AI provider. The judge model is specified in the evalite options.</p>
+    <pre><span class="kw">import</span> { <span class="fn">evalite</span> } <span class="kw">from</span> <span class="st">'@nem035/agentevals'</span>
+<span class="kw">import</span> { <span class="fn">anthropic</span> } <span class="kw">from</span> <span class="st">'@ai-sdk/anthropic'</span>
+<span class="kw">import</span> { <span class="fn">generateText</span> } <span class="kw">from</span> <span class="st">'ai'</span></pre>
+
+    <h2>Basic LLM-as-Judge with Per-Eval Judge</h2>
+    <p>Pass a <code>judge</code> model in the evalite options. Then use <code>toPassJudge</code> with a string criteria that the judge evaluates the response against.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'explains complex topics simply'</span>, {
+  judge: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+}, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'Explain concepts in simple terms, suitable for a 10 year old.'</span>,
+    prompt: <span class="st">'What is quantum entanglement?'</span>,
+  })
+
+  <span class="cm">// Pass a string criteria - the judge model evaluates if the output meets it</span>
+  <span class="kw">await</span> <span class="fn">expect</span>(result).<span class="fn">toPassJudge</span>(
+    <span class="st">'Explains quantum entanglement in simple, age-appropriate language without jargon'</span>
+  )
+})</pre>
+
+    <h2>Judge with Custom Threshold</h2>
+    <p>Pass an object to <code>toPassJudge</code> with a <code>threshold</code> to require a higher confidence score from the judge (default is 0.5).</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'provides empathetic response'</span>, {
+  judge: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+}, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'You are a supportive mental health chatbot.'</span>,
+    prompt: <span class="st">'I had a really tough day at work.'</span>,
+  })
+
+  <span class="kw">await</span> <span class="fn">expect</span>(result).<span class="fn">toPassJudge</span>({
+    criteria: <span class="st">'Shows genuine empathy, validates feelings, and offers constructive support without being dismissive'</span>,
+    threshold: <span class="nr">0.8</span>,  <span class="cm">// Require high confidence from the judge (default is 0.5)</span>
+  })
+})</pre>
+
+    <h2>Group-Level Judge</h2>
+    <p>Use <code>evalite.group</code> with a <code>judge</code> option so all evals in the group share the same judge model. No need to specify it on each eval.</p>
+    <pre><span class="fn">evalite</span>.<span class="fn">group</span>(<span class="st">'customer-service-quality'</span>, {
+  judge: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+}, () <span class="op">=&gt;</span> {
+
+  <span class="fn">evalite</span>(<span class="st">'handles complaints professionally'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+    <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+      model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+      system: <span class="st">'You are a customer service agent for Acme Corp.'</span>,
+      prompt: <span class="st">'Your product broke after one day! I want a refund!'</span>,
+    })
+
+    <span class="kw">await</span> <span class="fn">expect</span>(result).<span class="fn">toPassJudge</span>(
+      <span class="st">'Acknowledges the frustration, apologizes, and offers a clear resolution path'</span>
+    )
+  })
+
+  <span class="fn">evalite</span>(<span class="st">'escalates when appropriate'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+    <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+      model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+      system: <span class="st">'You are a customer service agent. Escalate legal threats to a supervisor.'</span>,
+      prompt: <span class="st">'I am going to sue your company for damages.'</span>,
+    })
+
+    <span class="kw">await</span> <span class="fn">expect</span>(result).<span class="fn">toPassJudge</span>(
+      <span class="st">'De-escalates the situation and offers to connect with a supervisor or specialized team'</span>
+    )
+  })
+
+  <span class="fn">evalite</span>(<span class="st">'stays on topic'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+    <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+      model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+      system: <span class="st">'You are a customer service agent for Acme Corp. Only discuss Acme products and services.'</span>,
+      prompt: <span class="st">'What do you think about the latest iPhone?'</span>,
+    })
+
+    <span class="kw">await</span> <span class="fn">expect</span>(result).<span class="fn">toPassJudge</span>(
+      <span class="st">'Politely redirects the conversation to Acme products without engaging with off-topic discussion'</span>
+    )
+  })
+
+})</pre>
+
+    <h2>Combining Judge with Other Assertions</h2>
+    <p>Mix deterministic checks (<code>toContain</code>, <code>toMatch</code>) with LLM judgment for comprehensive quality validation.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'comprehensive quality check'</span>, {
+  judge: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+}, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'You are a technical writer. Write clear, structured documentation.'</span>,
+    prompt: <span class="st">'Document how to set up a Node.js project with TypeScript.'</span>,
+  })
+
+  <span class="cm">// Mix deterministic checks with LLM judgment</span>
+  <span class="fn">expect</span>(result)
+    .<span class="fn">toContain</span>(<span class="st">'npm'</span>)
+    .<span class="fn">toContain</span>(<span class="st">'typescript'</span>)
+    .<span class="fn">toMatch</span>(<span class="op">/</span><span class="st">tsconfig</span><span class="op">/</span>i)
+
+  <span class="kw">await</span> <span class="fn">expect</span>(result).<span class="fn">toPassJudge</span>(
+    <span class="st">'Provides a clear, step-by-step guide that a beginner could follow'</span>
+  )
+})</pre>
+
+    <h2>Override Judge for a Specific Assertion</h2>
+    <p>You can override the default judge for a specific <code>toPassJudge</code> call by passing a <code>judge</code> in the options object.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'uses different judges for different criteria'</span>, {
+  judge: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),  <span class="cm">// default judge</span>
+}, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    prompt: <span class="st">'Write a short poem about the ocean.'</span>,
+  })
+
+  <span class="cm">// Uses the default judge from evalite options</span>
+  <span class="kw">await</span> <span class="fn">expect</span>(result).<span class="fn">toPassJudge</span>(<span class="st">'Is a poem about the ocean'</span>)
+
+  <span class="cm">// Override with a different judge for this specific check</span>
+  <span class="kw">await</span> <span class="fn">expect</span>(result).<span class="fn">toPassJudge</span>({
+    criteria: <span class="st">'Uses vivid imagery and poetic devices like metaphor or alliteration'</span>,
+    threshold: <span class="nr">0.7</span>,
+    judge: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),  <span class="cm">// could be a different model</span>
+  })
+})</pre>
+
+    <h2>Full Source</h2>
+    <p>See the complete example: <a href="https://github.com/nem035/agentevals/blob/main/examples/cookbook/llm-as-judge.eval.ts" style="color: var(--accent);">llm-as-judge.eval.ts</a></p>
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    <p>MIT License &middot; <a href="https://github.com/nem035/agentevals">GitHub</a> &middot; <a href="https://www.npmjs.com/package/@nem035/agentevals">npm</a></p>
+  </div>
+</footer>
+
+</body>
+</html>

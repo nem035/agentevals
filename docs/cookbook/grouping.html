@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Grouping &amp; Organization - agentevals Cookbook</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <a href="../index.html" class="logo">agent<span>evals</span></a>
+    <nav>
+      <a href="../index.html">Home</a>
+      <a href="../cookbook.html" class="active">Cookbook</a>
+      <a href="../api.html">API</a>
+      <a href="https://github.com/nem035/agentevals" class="github">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container">
+  <div class="cookbook-page">
+    <div class="breadcrumb"><a href="../cookbook.html">Cookbook</a> / Grouping &amp; Organization</div>
+    <h1>Grouping &amp; Organization</h1>
+    <p class="subtitle">Demonstrates organizing evals with evalite.group(), shared options, and structuring large eval suites.</p>
+
+    <h2>Ungrouped Evals (Top-level)</h2>
+    <p>Evals defined outside any group are "ungrouped" and run independently.</p>
+<pre><span class="kw">import</span> { <span class="fn">evalite</span> } <span class="kw">from</span> <span class="st">'@nem035/agentevals'</span>
+<span class="kw">import</span> { <span class="fn">anthropic</span> } <span class="kw">from</span> <span class="st">'@ai-sdk/anthropic'</span>
+<span class="kw">import</span> { <span class="fn">generateText</span> } <span class="kw">from</span> <span class="st">'ai'</span>
+
+<span class="fn">evalite</span>(<span class="st">'basic sanity check'</span>, <span class="kw">async</span> ({ <span class="fn">expect</span> }) =&gt; {
+  <span class="kw">const</span> result = <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    prompt: <span class="st">'Say "ok".'</span>,
+  })
+
+  <span class="fn">expect</span>(result).<span class="fn">toMatch</span>(<span class="op">/</span>ok<span class="op">/i</span>)
+})</pre>
+
+    <h2>Simple Group</h2>
+    <p>Use <code>evalite.group()</code> to organize related evals together. Groups appear as a unit in the output.</p>
+<pre><span class="fn">evalite</span>.<span class="fn">group</span>(<span class="st">'math'</span>, () =&gt; {
+  <span class="fn">evalite</span>(<span class="st">'addition'</span>, <span class="kw">async</span> ({ <span class="fn">expect</span> }) =&gt; {
+    <span class="kw">const</span> result = <span class="kw">await</span> <span class="fn">generateText</span>({
+      model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+      prompt: <span class="st">'What is 2 + 3? Just the number.'</span>,
+    })
+    <span class="fn">expect</span>(result).<span class="fn">toContain</span>(<span class="st">'5'</span>)
+  })
+
+  <span class="fn">evalite</span>(<span class="st">'multiplication'</span>, <span class="kw">async</span> ({ <span class="fn">expect</span> }) =&gt; {
+    <span class="kw">const</span> result = <span class="kw">await</span> <span class="fn">generateText</span>({
+      model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+      prompt: <span class="st">'What is 7 * 8? Just the number.'</span>,
+    })
+    <span class="fn">expect</span>(result).<span class="fn">toContain</span>(<span class="st">'56'</span>)
+  })
+
+  <span class="fn">evalite</span>(<span class="st">'division'</span>, <span class="kw">async</span> ({ <span class="fn">expect</span> }) =&gt; {
+    <span class="kw">const</span> result = <span class="kw">await</span> <span class="fn">generateText</span>({
+      model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+      prompt: <span class="st">'What is 100 / 4? Just the number.'</span>,
+    })
+    <span class="fn">expect</span>(result).<span class="fn">toContain</span>(<span class="st">'25'</span>)
+  })
+})</pre>
+
+    <h2>Group with Shared Options</h2>
+    <p>Pass options like <code>judge</code> and <code>timeout</code> to a group. All evals inside inherit these options automatically.</p>
+<pre><span class="fn">evalite</span>.<span class="fn">group</span>(<span class="st">'quality-checks'</span>, {
+  judge: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),  <span class="cm">// shared judge for all evals in group</span>
+  timeout: <span class="nr">30000</span>,                                 <span class="cm">// shared timeout</span>
+}, () =&gt; {
+
+  <span class="fn">evalite</span>(<span class="st">'helpful responses'</span>, <span class="kw">async</span> ({ <span class="fn">expect</span> }) =&gt; {
+    <span class="kw">const</span> result = <span class="kw">await</span> <span class="fn">generateText</span>({
+      model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+      prompt: <span class="st">'How do I learn TypeScript?'</span>,
+    })
+
+    <span class="cm">// toPassJudge uses the group's judge model automatically</span>
+    <span class="kw">await</span> <span class="fn">expect</span>(result).<span class="fn">toPassJudge</span>(<span class="st">'Provides actionable advice for learning TypeScript'</span>)
+  })
+
+  <span class="fn">evalite</span>(<span class="st">'clear explanations'</span>, <span class="kw">async</span> ({ <span class="fn">expect</span> }) =&gt; {
+    <span class="kw">const</span> result = <span class="kw">await</span> <span class="fn">generateText</span>({
+      model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+      prompt: <span class="st">'Explain what an API is.'</span>,
+    })
+
+    <span class="kw">await</span> <span class="fn">expect</span>(result).<span class="fn">toPassJudge</span>(<span class="st">'Explains APIs in clear, non-technical language'</span>)
+  })
+
+})</pre>
+
+    <h2>Multiple Groups in One File</h2>
+    <p>You can define multiple groups in a single file to create organized test suites. Each group runs as its own unit.</p>
+<pre><span class="fn">evalite</span>.<span class="fn">group</span>(<span class="st">'tone-formal'</span>, () =&gt; {
+  <span class="fn">evalite</span>(<span class="st">'uses formal language'</span>, <span class="kw">async</span> ({ <span class="fn">expect</span> }) =&gt; {
+    <span class="kw">const</span> result = <span class="kw">await</span> <span class="fn">generateText</span>({
+      model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+      system: <span class="st">'You are a formal business assistant. Use professional language.'</span>,
+      prompt: <span class="st">'Draft a meeting request.'</span>,
+    })
+
+    <span class="fn">expect</span>(result).<span class="fn">toMatch</span>(<span class="op">/</span>dear|regards|please|kindly|request<span class="op">/i</span>)
+  })
+})
+
+<span class="fn">evalite</span>.<span class="fn">group</span>(<span class="st">'tone-casual'</span>, () =&gt; {
+  <span class="fn">evalite</span>(<span class="st">'uses casual language'</span>, <span class="kw">async</span> ({ <span class="fn">expect</span> }) =&gt; {
+    <span class="kw">const</span> result = <span class="kw">await</span> <span class="fn">generateText</span>({
+      model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+      system: <span class="st">'You are a casual, friendly assistant. Be relaxed and conversational.'</span>,
+      prompt: <span class="st">'How do I start a new project?'</span>,
+    })
+
+    <span class="fn">expect</span>(result).<span class="fn">toMatch</span>(<span class="op">/</span>hey|cool|awesome|just|gonna|let's<span class="op">/i</span>)
+  })
+})</pre>
+
+    <h2>Parameterized Groups</h2>
+    <p>Use loops to generate groups dynamically. This is useful for testing the same behavior across different configurations or personas.</p>
+<pre><span class="kw">const</span> personas = [
+  { name: <span class="st">'teacher'</span>, system: <span class="st">'You are a patient teacher.'</span>, expectPattern: <span class="op">/</span>explain|understand|learn<span class="op">/i</span> },
+  { name: <span class="st">'coach'</span>, system: <span class="st">'You are a motivating coach.'</span>, expectPattern: <span class="op">/</span>great|can do|believe|goal<span class="op">/i</span> },
+  { name: <span class="st">'expert'</span>, system: <span class="st">'You are a domain expert. Be precise.'</span>, expectPattern: <span class="op">/</span>specifically|precisely|technically<span class="op">/i</span> },
+]
+
+<span class="kw">for</span> (<span class="kw">const</span> persona <span class="kw">of</span> personas) {
+  <span class="fn">evalite</span>.<span class="fn">group</span>(<span class="st">`persona-${persona.name}`</span>, () =&gt; {
+    <span class="fn">evalite</span>(<span class="st">'responds in character'</span>, <span class="kw">async</span> ({ <span class="fn">expect</span> }) =&gt; {
+      <span class="kw">const</span> result = <span class="kw">await</span> <span class="fn">generateText</span>({
+        model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+        system: persona.system,
+        prompt: <span class="st">'Help me understand recursion.'</span>,
+      })
+
+      <span class="fn">expect</span>(result).<span class="fn">toMatch</span>(persona.expectPattern)
+    })
+  })
+}</pre>
+
+    <h2>Full Source</h2>
+    <p>See the complete example: <a href="https://github.com/nem035/agentevals/blob/main/examples/cookbook/grouping.eval.ts" style="color: var(--accent);">grouping.eval.ts</a></p>
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    <p>MIT License &middot; <a href="https://github.com/nem035/agentevals">GitHub</a> &middot; <a href="https://www.npmjs.com/package/@nem035/agentevals">npm</a></p>
+  </div>
+</footer>
+
+</body>
+</html>

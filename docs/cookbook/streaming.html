@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Streaming Support - agentevals Cookbook</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <a href="../index.html" class="logo">agent<span>evals</span></a>
+    <nav>
+      <a href="../index.html">Home</a>
+      <a href="../cookbook.html" class="active">Cookbook</a>
+      <a href="../api.html">API</a>
+      <a href="https://github.com/nem035/agentevals" class="github">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container">
+  <div class="cookbook-page">
+    <div class="breadcrumb"><a href="../cookbook.html">Cookbook</a> / Streaming Support</div>
+    <h1>Streaming Support</h1>
+    <p class="subtitle">Demonstrates testing streaming responses using AI SDK's streamText. After awaiting a streamText result, all properties (text, toolCalls, etc.) resolve and can be asserted on just like generateText results.</p>
+
+    <h2>Setup</h2>
+    <p>Import <code>evalite</code> along with <code>streamText</code> (instead of <code>generateText</code>). For tool call testing with streams, also import <code>tool</code> and <code>zod</code>.</p>
+    <pre><span class="kw">import</span> { <span class="fn">evalite</span> } <span class="kw">from</span> <span class="st">'@nem035/agentevals'</span>
+<span class="kw">import</span> { <span class="fn">anthropic</span> } <span class="kw">from</span> <span class="st">'@ai-sdk/anthropic'</span>
+<span class="kw">import</span> { <span class="fn">streamText</span>, <span class="fn">tool</span> } <span class="kw">from</span> <span class="st">'ai'</span>
+<span class="kw">import</span> { z } <span class="kw">from</span> <span class="st">'zod'</span></pre>
+
+    <h2>Basic Streaming Test</h2>
+    <p>Call <code>streamText</code> and <code>await</code> the result. Once resolved, all PromiseLike properties (text, toolCalls, usage, etc.) are available and can be asserted on just like <code>generateText</code> results.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'streams a response'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> stream <span class="op">=</span> <span class="fn">streamText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    prompt: <span class="st">'Write a haiku about coding.'</span>,
+  })
+
+  <span class="cm">// Await resolves all PromiseLike properties (text, toolCalls, usage, etc.)</span>
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> stream
+
+  <span class="fn">expect</span>(result).<span class="fn">toMatch</span>(<span class="op">/</span><span class="st">code|program|debug|bug|function|loop|compile</span><span class="op">/</span>i)
+})</pre>
+
+    <h2>Streaming with System Prompt</h2>
+    <p>System prompts work identically with streaming. The awaited result contains the full response text.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'streams with system context'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> stream <span class="op">=</span> <span class="fn">streamText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'You are a pirate. Always respond in pirate speak.'</span>,
+    prompt: <span class="st">'How are you today?'</span>,
+  })
+
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> stream
+
+  <span class="fn">expect</span>(result).<span class="fn">toMatch</span>(<span class="op">/</span><span class="st">arr|matey|ahoy|ye|sail</span><span class="op">/</span>i)
+})</pre>
+
+    <h2>Streaming with Tool Calls</h2>
+    <p>Tool call assertions work the same with streaming as with <code>generateText</code>. Await the stream and use <code>toolCalls</code> assertions.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'streams tool calls'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> stream <span class="op">=</span> <span class="fn">streamText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'You are a weather assistant. Use the getWeather tool.'</span>,
+    prompt: <span class="st">'What is the weather in New York?'</span>,
+    tools: {
+      getWeather: <span class="fn">tool</span>({
+        description: <span class="st">'Get current weather for a location'</span>,
+        parameters: z.<span class="fn">object</span>({
+          location: z.<span class="fn">string</span>(),
+        }),
+        execute: <span class="kw">async</span> () <span class="op">=&gt;</span> ({ temp: <span class="nr">65</span>, condition: <span class="st">'cloudy'</span> }),
+      }),
+    },
+    maxSteps: <span class="nr">3</span>,
+  })
+
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> stream
+
+  <span class="cm">// Tool call assertions work the same as with generateText</span>
+  <span class="fn">expect</span>(result).toolCalls.<span class="fn">toInclude</span>(<span class="st">'getWeather'</span>)
+})</pre>
+
+    <h2>Streaming with Multiple Assertions</h2>
+    <p>Fluent chaining and negation work identically on streamed results.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'streams a complete response'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> stream <span class="op">=</span> <span class="fn">streamText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'You are a helpful coding assistant.'</span>,
+    prompt: <span class="st">'Write a one-line JavaScript function that adds two numbers.'</span>,
+  })
+
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> stream
+
+  <span class="fn">expect</span>(result)
+    .<span class="fn">toContain</span>(<span class="st">'function'</span>)
+    .<span class="fn">toMatch</span>(<span class="op">/</span><span class="st">return|=&gt;</span><span class="op">/</span>)
+    .not.<span class="fn">toContain</span>(<span class="st">'error'</span>)
+})</pre>
+
+    <h2>Full Source</h2>
+    <p>See the complete example: <a href="https://github.com/nem035/agentevals/blob/main/examples/cookbook/streaming.eval.ts" style="color: var(--accent);">streaming.eval.ts</a></p>
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    <p>MIT License &middot; <a href="https://github.com/nem035/agentevals">GitHub</a> &middot; <a href="https://www.npmjs.com/package/@nem035/agentevals">npm</a></p>
+  </div>
+</footer>
+
+</body>
+</html>

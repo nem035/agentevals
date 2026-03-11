@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>agentevals - Test your AI apps like you test your code</title>
+  <meta name="description" content="A lightweight eval framework built on top of the AI SDK. Simple assertions, LLM-as-judge, streaming support, tool call testing.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <a href="index.html" class="logo">agent<span>evals</span></a>
+    <nav>
+      <a href="index.html" class="active">Home</a>
+      <a href="cookbook.html">Cookbook</a>
+      <a href="api.html">API</a>
+      <a href="https://github.com/nem035/agentevals" class="github">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- Hero -->
+  <div class="hero">
+    <div class="container">
+      <h1>agent<span>evals</span></h1>
+      <p>Test your AI apps like you test your code. A lightweight eval framework built on top of the AI SDK.</p>
+      <div class="hero-actions">
+        <a href="cookbook.html" class="btn btn-primary">Cookbook</a>
+        <a href="api.html" class="btn btn-secondary">API Reference</a>
+        <a href="https://github.com/nem035/agentevals" class="btn btn-secondary">GitHub</a>
+      </div>
+      <div class="install-cmd">npm install @nem035/agentevals</div>
+    </div>
+  </div>
+
+  <!-- Quick Start -->
+  <section>
+    <div class="container">
+      <h2>Quick Start</h2>
+      <p>Create a <code>.eval.ts</code> file and start testing.</p>
+
+<pre><span class="cm">// my-agent.eval.ts</span>
+<span class="kw">import</span> { <span class="fn">evalite</span> } <span class="kw">from</span> <span class="st">'@nem035/agentevals'</span>
+<span class="kw">import</span> { <span class="fn">anthropic</span> } <span class="kw">from</span> <span class="st">'@ai-sdk/anthropic'</span>
+<span class="kw">import</span> { <span class="fn">generateText</span> } <span class="kw">from</span> <span class="st">'ai'</span>
+
+<span class="fn">evalite</span>(<span class="st">'answers questions'</span>, <span class="kw">async</span> ({ <span class="fn">expect</span> }) =&gt; {
+  <span class="kw">const</span> result = <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'You are a helpful assistant.'</span>,
+    prompt: <span class="st">'What is 2 + 2?'</span>,
+  })
+
+  <span class="fn">expect</span>(result).<span class="fn">toContain</span>(<span class="st">'4'</span>)
+})</pre>
+
+      <p>Run it:</p>
+
+<pre>$ npx agentevals run
+
+ AGENTEVALS v0.1.1
+
+   <span class="green" style="color: var(--green);">&#10003;</span> answers questions (1.2s)
+
+ ─────────────────────────────────────────────
+ Tests:    1 passed, 1 total
+ Time:     1.2s</pre>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section>
+    <div class="container">
+      <h2>Features</h2>
+      <div class="features">
+        <div class="feature">
+          <h3>AI SDK Native</h3>
+          <p>No wrapper layer. Use <code>generateText</code>, <code>streamText</code>, and <code>tool</code> from the <code>ai</code> package directly.</p>
+        </div>
+        <div class="feature">
+          <h3>Streaming Support</h3>
+          <p>Test streaming responses by awaiting <code>streamText</code> results. All properties resolve automatically.</p>
+        </div>
+        <div class="feature">
+          <h3>LLM-as-Judge</h3>
+          <p>Use any model as a judge for nuanced evaluations that simple string matching can't handle.</p>
+        </div>
+        <div class="feature">
+          <h3>Tool Call Testing</h3>
+          <p>Assert tools were called, check arguments with matchers, verify results. Mock and spy executors included.</p>
+        </div>
+        <div class="feature">
+          <h3>Simple Assertions</h3>
+          <p><code>toContain</code>, <code>toMatch</code>, <code>toPassJudge</code>, custom graders. Fluent chaining with <code>.not</code> negation.</p>
+        </div>
+        <div class="feature">
+          <h3>CLI</h3>
+          <p>Discover and run <code>*.eval.ts</code> files with configurable trials, concurrency, cost limits, and reporters.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Example -->
+  <section>
+    <div class="container">
+      <h2>A Taste of agentevals</h2>
+      <p>Group related evals, use LLM-as-judge for nuanced criteria, test tool calls with matchers.</p>
+
+      <h3>Grouping + LLM-as-Judge</h3>
+<pre><span class="kw">import</span> { <span class="fn">evalite</span> } <span class="kw">from</span> <span class="st">'@nem035/agentevals'</span>
+<span class="kw">import</span> { <span class="fn">anthropic</span> } <span class="kw">from</span> <span class="st">'@ai-sdk/anthropic'</span>
+<span class="kw">import</span> { <span class="fn">generateText</span> } <span class="kw">from</span> <span class="st">'ai'</span>
+
+<span class="fn">evalite</span>.<span class="fn">group</span>(<span class="st">'customer-service'</span>, {
+  judge: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+}, () =&gt; {
+
+  <span class="fn">evalite</span>(<span class="st">'handles complaints'</span>, <span class="kw">async</span> ({ <span class="fn">expect</span> }) =&gt; {
+    <span class="kw">const</span> result = <span class="kw">await</span> <span class="fn">generateText</span>({
+      model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+      system: <span class="st">'You are a customer service agent.'</span>,
+      prompt: <span class="st">'Your product broke after one day!'</span>,
+    })
+
+    <span class="kw">await</span> <span class="fn">expect</span>(result).<span class="fn">toPassJudge</span>(
+      <span class="st">'Acknowledges frustration and offers a clear resolution'</span>
+    )
+  })
+
+})</pre>
+
+      <h3>Tool Call Testing</h3>
+<pre><span class="kw">import</span> { <span class="fn">evalite</span>, <span class="fn">createMockExecutor</span>, <span class="fn">matchers</span> } <span class="kw">from</span> <span class="st">'@nem035/agentevals'</span>
+<span class="kw">import</span> { <span class="fn">generateText</span>, <span class="fn">tool</span> } <span class="kw">from</span> <span class="st">'ai'</span>
+<span class="kw">import</span> { z } <span class="kw">from</span> <span class="st">'zod'</span>
+
+<span class="fn">evalite</span>(<span class="st">'uses weather tool'</span>, <span class="kw">async</span> ({ <span class="fn">expect</span> }) =&gt; {
+  <span class="kw">const</span> mock = <span class="fn">createMockExecutor</span>({ temp: <span class="nr">72</span> })
+
+  <span class="kw">const</span> result = <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    prompt: <span class="st">'Weather in Tokyo?'</span>,
+    tools: {
+      getWeather: <span class="fn">tool</span>({
+        description: <span class="st">'Get weather'</span>,
+        parameters: z.<span class="fn">object</span>({ location: z.<span class="fn">string</span>() }),
+        execute: mock,
+      }),
+    },
+    maxSteps: <span class="nr">3</span>,
+  })
+
+  <span class="fn">expect</span>(result).toolCalls.<span class="fn">toInclude</span>(<span class="st">'getWeather'</span>)
+  <span class="fn">expect</span>(result).toolCalls.<span class="fn">toHaveArgs</span>(<span class="st">'getWeather'</span>, {
+    location: matchers.<span class="fn">stringMatching</span>(<span class="op">/</span>tokyo<span class="op">/i</span>),
+  })
+})</pre>
+
+      <p style="margin-top: 24px;">See the <a href="cookbook.html" style="color: var(--accent);">Cookbook</a> for more examples.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="container">
+    <p>MIT License &middot; <a href="https://github.com/nem035/agentevals">GitHub</a> &middot; <a href="https://www.npmjs.com/package/@nem035/agentevals">npm</a></p>
+  </div>
+</footer>
+
+</body>
+</html>

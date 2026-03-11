@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Reference - agentevals</title>
+  <meta name="description" content="API reference for agentevals: evalite, expect, matchers, tool helpers, custom graders, configuration, and CLI.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <a href="index.html" class="logo">agent<span>evals</span></a>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="cookbook.html">Cookbook</a>
+      <a href="api.html" class="active">API</a>
+      <a href="https://github.com/nem035/agentevals" class="github">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container">
+  <div class="cookbook-page">
+    <h1>API Reference</h1>
+    <p class="subtitle">Complete reference for the agentevals public API.</p>
+
+    <!-- evalite -->
+    <h2 id="evalite">evalite(name, fn) / evalite(name, options, fn)</h2>
+    <p>Define a single eval task. The callback receives an <code>EvalContext</code> with an <code>expect</code> function.</p>
+<pre><span class="fn">evalite</span>(<span class="st">'task name'</span>, <span class="kw">async</span> ({ <span class="fn">expect</span> }) =&gt; {
+  <span class="cm">// call AI SDK, then assert</span>
+})
+
+<span class="fn">evalite</span>(<span class="st">'task name'</span>, { judge: model, timeout: <span class="nr">30000</span> }, <span class="kw">async</span> ({ <span class="fn">expect</span> }) =&gt; {
+  <span class="cm">// with options</span>
+})</pre>
+
+    <table>
+      <thead><tr><th>Option</th><th>Type</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>judge</code></td><td><code>LanguageModel</code></td><td>Model to use for <code>toPassJudge()</code> assertions</td></tr>
+        <tr><td><code>timeout</code></td><td><code>number</code></td><td>Timeout in milliseconds</td></tr>
+      </tbody>
+    </table>
+
+    <p>Aliases: <code>test</code> and <code>it</code> are identical to <code>evalite</code>.</p>
+
+    <!-- evalite.group -->
+    <h2 id="evalite-group">evalite.group(name, fn) / evalite.group(name, options, fn)</h2>
+    <p>Group related evals together. Options propagate to child evals.</p>
+<pre><span class="fn">evalite</span>.<span class="fn">group</span>(<span class="st">'group name'</span>, () =&gt; {
+  <span class="fn">evalite</span>(<span class="st">'task 1'</span>, <span class="kw">async</span> ({ <span class="fn">expect</span> }) =&gt; { <span class="cm">/* ... */</span> })
+  <span class="fn">evalite</span>(<span class="st">'task 2'</span>, <span class="kw">async</span> ({ <span class="fn">expect</span> }) =&gt; { <span class="cm">/* ... */</span> })
+})
+
+<span class="fn">evalite</span>.<span class="fn">group</span>(<span class="st">'group name'</span>, {
+  judge: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+  timeout: <span class="nr">30000</span>,
+}, () =&gt; {
+  <span class="cm">// all evals here inherit the judge and timeout</span>
+})</pre>
+
+    <table>
+      <thead><tr><th>Option</th><th>Type</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>judge</code></td><td><code>LanguageModel</code></td><td>Default judge model for evals in this group</td></tr>
+        <tr><td><code>timeout</code></td><td><code>number</code></td><td>Default timeout for evals in this group</td></tr>
+      </tbody>
+    </table>
+
+    <!-- expect -->
+    <h2 id="expect">expect(result)</h2>
+    <p>Create assertions on an AI SDK result (<code>GenerateTextResult</code> or awaited <code>StreamTextResult</code>).</p>
+
+    <table>
+      <thead><tr><th>Method</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>.toContain(text, opts?)</code></td><td>Output contains text. Case-insensitive by default. Pass <code>{ caseSensitive: true }</code> for exact match.</td></tr>
+        <tr><td><code>.toMatch(pattern)</code></td><td>Output matches a regex or string pattern.</td></tr>
+        <tr><td><code>.toAskQuestions(opts?)</code></td><td>Output contains N question marks. Options: <code>{ min, max }</code>.</td></tr>
+        <tr><td><code>.toPassJudge(criteria)</code></td><td>LLM judge evaluates if output meets criteria. Async. Accepts string or <code>{ criteria, threshold, judge }</code>.</td></tr>
+        <tr><td><code>.to(graderFn)</code></td><td>Custom grader function. Can be sync or async.</td></tr>
+        <tr><td><code>.not.*</code></td><td>Negate any assertion.</td></tr>
+        <tr><td><code>.toolCalls.*</code></td><td>Access tool call assertions (see below).</td></tr>
+      </tbody>
+    </table>
+
+    <p>All assertions are fluent-chainable:</p>
+<pre><span class="fn">expect</span>(result)
+  .<span class="fn">toContain</span>(<span class="st">'hello'</span>)
+  .<span class="fn">toMatch</span>(<span class="op">/</span>greeting<span class="op">/i</span>)
+  .not.<span class="fn">toContain</span>(<span class="st">'error'</span>)</pre>
+
+    <!-- toolCalls -->
+    <h2 id="toolcalls">expect(result).toolCalls</h2>
+    <p>Assertions for tool call behavior.</p>
+
+    <table>
+      <thead><tr><th>Method</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>.toHaveBeenCalled()</code></td><td>At least one tool was called.</td></tr>
+        <tr><td><code>.toInclude(name)</code></td><td>A specific tool was called.</td></tr>
+        <tr><td><code>.toHaveCallCount(n)</code></td><td>Total number of tool calls.</td></tr>
+        <tr><td><code>.toHaveCallCount(name, n)</code></td><td>Call count for a specific tool.</td></tr>
+        <tr><td><code>.toHaveArgs(name, args)</code></td><td>Tool was called with specific arguments. Supports matchers.</td></tr>
+        <tr><td><code>.toHaveResult(name, result)</code></td><td>Tool returned a specific result.</td></tr>
+        <tr><td><code>.getCalls(name?)</code></td><td>Get raw call data (non-asserting).</td></tr>
+        <tr><td><code>.not.*</code></td><td>Negate any tool call assertion.</td></tr>
+      </tbody>
+    </table>
+
+    <!-- matchers -->
+    <h2 id="matchers">matchers</h2>
+    <p>Flexible matchers for use with <code>toHaveArgs</code> and <code>toHaveResult</code>.</p>
+
+    <table>
+      <thead><tr><th>Matcher</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>matchers.objectContaining(obj)</code></td><td>Partial object match.</td></tr>
+        <tr><td><code>matchers.arrayContaining(arr)</code></td><td>Array contains all specified elements.</td></tr>
+        <tr><td><code>matchers.stringMatching(pattern)</code></td><td>String matches regex or string pattern.</td></tr>
+        <tr><td><code>matchers.anything()</code></td><td>Matches any value.</td></tr>
+      </tbody>
+    </table>
+
+    <!-- Tool helpers -->
+    <h2 id="tool-helpers">Tool Testing Helpers</h2>
+
+    <h3>createMockExecutor(returnValue)</h3>
+    <p>Creates an executor that records calls and returns a fixed value.</p>
+<pre><span class="kw">const</span> mock = <span class="fn">createMockExecutor</span>({ temperature: <span class="nr">72</span> })
+<span class="cm">// Use as execute function in AI SDK tool()</span>
+<span class="cm">// After eval: mock.calls =&gt; [{ location: 'Tokyo' }, ...]</span></pre>
+
+    <h3>createSpyExecutor(fn)</h3>
+    <p>Wraps a real executor and records calls + results.</p>
+<pre><span class="kw">const</span> spy = <span class="fn">createSpyExecutor</span>(<span class="kw">async</span> ({ location }) =&gt; <span class="fn">fetchWeather</span>(location))
+<span class="cm">// After eval: spy.calls, spy.results</span></pre>
+
+    <!-- Custom graders -->
+    <h2 id="custom-graders">defineGrader(name, fn)</h2>
+    <p>Create a reusable grader function for use with <code>expect(result).to(grader)</code>.</p>
+<pre><span class="kw">const</span> noPII = <span class="fn">defineGrader</span>(<span class="st">'noPII'</span>, (result) =&gt; {
+  <span class="kw">const</span> hasPII = <span class="op">/</span>\b\d{3}-\d{2}-\d{4}\b<span class="op">/</span>.test(result.text)
+  <span class="kw">return</span> {
+    pass: !hasPII,
+    reason: hasPII ? <span class="st">'Contains PII'</span> : <span class="st">'No PII detected'</span>,
+  }
+})
+
+<span class="fn">expect</span>(result).<span class="fn">to</span>(noPII)</pre>
+
+    <p>The grader function receives an <code>AIResult</code> and returns <code>{ pass: boolean, reason: string, score?: number }</code>. Can be async.</p>
+
+    <!-- Config -->
+    <h2 id="config">Configuration</h2>
+    <p>Create <code>agentevals.config.ts</code> in your project root:</p>
+<pre><span class="kw">import</span> { <span class="fn">defineConfig</span> } <span class="kw">from</span> <span class="st">'@nem035/agentevals'</span>
+
+<span class="kw">export default</span> <span class="fn">defineConfig</span>({
+  include: [<span class="st">'**/*.eval.ts'</span>],
+  exclude: [<span class="st">'node_modules/**'</span>],
+  trials: <span class="nr">1</span>,
+  timeout: <span class="nr">60000</span>,
+  parallel: <span class="kw">true</span>,
+  maxConcurrency: <span class="nr">5</span>,
+  reporters: [<span class="st">'console'</span>],
+  maxCost: <span class="nr">10.0</span>,
+})</pre>
+
+    <table>
+      <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>include</code></td><td><code>string[]</code></td><td><code>['**/*.eval.ts', ...]</code></td><td>Glob patterns for eval files</td></tr>
+        <tr><td><code>exclude</code></td><td><code>string[]</code></td><td><code>['node_modules', ...]</code></td><td>Glob patterns to exclude</td></tr>
+        <tr><td><code>trials</code></td><td><code>number</code></td><td><code>1</code></td><td>Times to run each eval</td></tr>
+        <tr><td><code>timeout</code></td><td><code>number</code></td><td><code>60000</code></td><td>Default timeout in ms</td></tr>
+        <tr><td><code>parallel</code></td><td><code>boolean</code></td><td><code>true</code></td><td>Run evals in parallel</td></tr>
+        <tr><td><code>maxConcurrency</code></td><td><code>number</code></td><td><code>5</code></td><td>Max concurrent evals</td></tr>
+        <tr><td><code>reporters</code></td><td><code>string[]</code></td><td><code>['console']</code></td><td><code>'console'</code> or <code>'json'</code></td></tr>
+        <tr><td><code>maxCost</code></td><td><code>number</code></td><td><code>undefined</code></td><td>Max cost in USD before stopping</td></tr>
+      </tbody>
+    </table>
+
+    <!-- CLI -->
+    <h2 id="cli">CLI Reference</h2>
+<pre><span class="cm"># Run all evals</span>
+agentevals run
+
+<span class="cm"># Run specific file</span>
+agentevals run my-agent.eval.ts
+
+<span class="cm"># Filter by task name</span>
+agentevals run --grep <span class="st">"greeting"</span>
+
+<span class="cm"># JSON output for CI</span>
+agentevals run --reporter=json
+
+<span class="cm"># Stop if cost exceeds $1</span>
+agentevals run --max-cost=<span class="nr">1.00</span>
+
+<span class="cm"># Run each task 5 times</span>
+agentevals run --trials=<span class="nr">5</span>
+
+<span class="cm"># See what would run without executing</span>
+agentevals run --dry-run
+
+<span class="cm"># Create config and example files</span>
+agentevals init</pre>
+
+    <!-- CI/CD -->
+    <h2 id="ci">CI/CD Integration</h2>
+    <p>agentevals returns exit code 1 when tests fail.</p>
+<pre><span class="cm"># .github/workflows/evals.yml</span>
+<span class="ty">name</span>: Evals
+<span class="ty">on</span>: [push]
+
+<span class="ty">jobs</span>:
+  <span class="ty">eval</span>:
+    <span class="ty">runs-on</span>: ubuntu-latest
+    <span class="ty">steps</span>:
+      - <span class="ty">uses</span>: actions/checkout@v4
+      - <span class="ty">uses</span>: actions/setup-node@v4
+        <span class="ty">with</span>:
+          <span class="ty">node-version</span>: <span class="nr">20</span>
+
+      - <span class="ty">run</span>: npm install
+      - <span class="ty">run</span>: npx agentevals run --reporter=json --max-cost=<span class="nr">5.00</span>
+        <span class="ty">env</span>:
+          <span class="ty">ANTHROPIC_API_KEY</span>: ${{ secrets.ANTHROPIC_API_KEY }}</pre>
+
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    <p>MIT License &middot; <a href="https://github.com/nem035/agentevals">GitHub</a> &middot; <a href="https://www.npmjs.com/package/@nem035/agentevals">npm</a></p>
+  </div>
+</footer>
+
+</body>
+</html>

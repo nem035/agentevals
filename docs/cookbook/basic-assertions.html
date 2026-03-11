@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Basic Assertions - agentevals Cookbook</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <a href="../index.html" class="logo">agent<span>evals</span></a>
+    <nav>
+      <a href="../index.html">Home</a>
+      <a href="../cookbook.html" class="active">Cookbook</a>
+      <a href="../api.html">API</a>
+      <a href="https://github.com/nem035/agentevals" class="github">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container">
+  <div class="cookbook-page">
+    <div class="breadcrumb"><a href="../cookbook.html">Cookbook</a> / Basic Assertions</div>
+    <h1>Basic Assertions</h1>
+    <p class="subtitle">Demonstrates the core assertion methods: toContain, toMatch, toAskQuestions, negation (.not), and fluent chaining.</p>
+
+    <h2>Setup</h2>
+    <p>Import <code>evalite</code> from agentevals along with your AI SDK provider and <code>generateText</code>.</p>
+    <pre><span class="kw">import</span> { <span class="fn">evalite</span> } <span class="kw">from</span> <span class="st">'@nem035/agentevals'</span>
+<span class="kw">import</span> { <span class="fn">anthropic</span> } <span class="kw">from</span> <span class="st">'@ai-sdk/anthropic'</span>
+<span class="kw">import</span> { <span class="fn">generateText</span> } <span class="kw">from</span> <span class="st">'ai'</span></pre>
+
+    <h2>toContain: Check That Output Includes Specific Text</h2>
+    <p>Use <code>toContain</code> to verify the response includes a substring. By default, matching is case-insensitive. Pass <code>{ caseSensitive: true }</code> for exact case matching.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'responds to greeting'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'You are a friendly assistant. Keep responses brief.'</span>,
+    prompt: <span class="st">'Hello!'</span>,
+  })
+
+  <span class="cm">// Case-insensitive by default</span>
+  <span class="fn">expect</span>(result).<span class="fn">toContain</span>(<span class="st">'hello'</span>)
+})
+
+<span class="fn">evalite</span>(<span class="st">'case-sensitive matching'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    prompt: <span class="st">'Say "TypeScript" exactly.'</span>,
+  })
+
+  <span class="fn">expect</span>(result).<span class="fn">toContain</span>(<span class="st">'TypeScript'</span>, { caseSensitive: <span class="nr">true</span> })
+})</pre>
+
+    <h2>toMatch: Check That Output Matches a Regex</h2>
+    <p>Use <code>toMatch</code> to test the response against a regular expression. This is useful for validating patterns like numbers, lists, or specific formats.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'answers math correctly'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    prompt: <span class="st">'What is 2 + 2? Just the number.'</span>,
+  })
+
+  <span class="fn">expect</span>(result).<span class="fn">toMatch</span>(<span class="op">/</span><span class="st">\b4\b</span><span class="op">/</span>)
+})
+
+<span class="fn">evalite</span>(<span class="st">'provides a numbered list'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    prompt: <span class="st">'List 3 programming languages. Use a numbered list.'</span>,
+  })
+
+  <span class="cm">// Match numbered list pattern</span>
+  <span class="fn">expect</span>(result).<span class="fn">toMatch</span>(<span class="op">/</span><span class="st">1\.\s+\w+</span><span class="op">/</span>)
+})</pre>
+
+    <h2>toAskQuestions: Check That Output Contains Questions</h2>
+    <p>Use <code>toAskQuestions</code> to assert the response contains question marks. Optionally specify <code>min</code> and <code>max</code> to bound the expected number of questions.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'asks clarifying questions'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'You are a helpful assistant. When the user request is vague, ask clarifying questions.'</span>,
+    prompt: <span class="st">'Help me with my project.'</span>,
+  })
+
+  <span class="cm">// At least 1 question mark</span>
+  <span class="fn">expect</span>(result).<span class="fn">toAskQuestions</span>()
+})
+
+<span class="fn">evalite</span>(<span class="st">'asks a bounded number of questions'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'Ask the user 2-3 questions to understand their needs.'</span>,
+    prompt: <span class="st">'I want to build an app.'</span>,
+  })
+
+  <span class="fn">expect</span>(result).<span class="fn">toAskQuestions</span>({ min: <span class="nr">2</span>, max: <span class="nr">3</span> })
+})</pre>
+
+    <h2>Negation with .not</h2>
+    <p>Chain <code>.not</code> before any assertion to negate it. This is useful for ensuring the response does <em>not</em> contain unwanted patterns.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'does not apologize unnecessarily'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'You are a confident assistant. Answer directly without apologizing.'</span>,
+    prompt: <span class="st">'What is the capital of France?'</span>,
+  })
+
+  <span class="fn">expect</span>(result)
+    .<span class="fn">toContain</span>(<span class="st">'Paris'</span>)
+    .not.<span class="fn">toMatch</span>(<span class="op">/</span><span class="st">sorry|apologize|apologies</span><span class="op">/</span>i)
+})</pre>
+
+    <h2>Fluent Chaining</h2>
+    <p>Chain multiple assertions together for comprehensive response validation. Each assertion returns the expect object so you can keep chaining.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'comprehensive response check'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'You are a coding assistant. Be concise and helpful.'</span>,
+    prompt: <span class="st">'How do I reverse a string in JavaScript?'</span>,
+  })
+
+  <span class="fn">expect</span>(result)
+    .<span class="fn">toContain</span>(<span class="st">'reverse'</span>)
+    .<span class="fn">toMatch</span>(<span class="op">/</span><span class="st">split|join|reverse</span><span class="op">/</span>i)
+    .not.<span class="fn">toContain</span>(<span class="st">'error'</span>)
+})</pre>
+
+    <h2>Full Source</h2>
+    <p>See the complete example: <a href="https://github.com/nem035/agentevals/blob/main/examples/cookbook/basic-assertions.eval.ts" style="color: var(--accent);">basic-assertions.eval.ts</a></p>
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    <p>MIT License &middot; <a href="https://github.com/nem035/agentevals">GitHub</a> &middot; <a href="https://www.npmjs.com/package/@nem035/agentevals">npm</a></p>
+  </div>
+</footer>
+
+</body>
+</html>

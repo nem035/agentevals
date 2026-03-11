@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multi-turn Conversations - agentevals Cookbook</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <a href="../index.html" class="logo">agent<span>evals</span></a>
+    <nav>
+      <a href="../index.html">Home</a>
+      <a href="../cookbook.html" class="active">Cookbook</a>
+      <a href="../api.html">API</a>
+      <a href="https://github.com/nem035/agentevals" class="github">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container">
+  <div class="cookbook-page">
+    <div class="breadcrumb"><a href="../cookbook.html">Cookbook</a> / Multi-turn Conversations</div>
+    <h1>Multi-turn Conversations</h1>
+    <p class="subtitle">Demonstrates testing multi-turn conversations using AI SDK's messages array. Test context retention, conversation flow, and multi-step interactions.</p>
+
+    <h2>Setup</h2>
+    <p>Import <code>evalite</code> and your AI provider. Multi-turn conversations use the <code>messages</code> array instead of a single <code>prompt</code>.</p>
+    <pre><span class="kw">import</span> { <span class="fn">evalite</span> } <span class="kw">from</span> <span class="st">'@nem035/agentevals'</span>
+<span class="kw">import</span> { <span class="fn">anthropic</span> } <span class="kw">from</span> <span class="st">'@ai-sdk/anthropic'</span>
+<span class="kw">import</span> { <span class="fn">generateText</span> } <span class="kw">from</span> <span class="st">'ai'</span></pre>
+
+    <h2>Basic Context Retention</h2>
+    <p>Test that the model remembers information from earlier turns in the conversation.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'remembers user name'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'You are a friendly assistant.'</span>,
+    messages: [
+      { role: <span class="st">'user'</span>, content: <span class="st">'Hi, my name is Alice.'</span> },
+      { role: <span class="st">'assistant'</span>, content: <span class="st">'Hello Alice! Nice to meet you. How can I help?'</span> },
+      { role: <span class="st">'user'</span>, content: <span class="st">'What is my name?'</span> },
+    ],
+  })
+
+  <span class="fn">expect</span>(result).<span class="fn">toContain</span>(<span class="st">'Alice'</span>)
+})</pre>
+
+    <h2>Retaining Facts Across Turns</h2>
+    <p>Verify the model remembers stated preferences and constraints from prior messages.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'remembers stated preferences'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'You are a personal assistant. Remember user preferences.'</span>,
+    messages: [
+      { role: <span class="st">'user'</span>, content: <span class="st">'I am allergic to peanuts and I prefer Italian food.'</span> },
+      { role: <span class="st">'assistant'</span>, content: <span class="st">'Noted! I will keep your peanut allergy and Italian food preference in mind.'</span> },
+      { role: <span class="st">'user'</span>, content: <span class="st">'Suggest a dinner for me.'</span> },
+    ],
+  })
+
+  <span class="cm">// Should suggest Italian food and avoid peanuts</span>
+  <span class="fn">expect</span>(result)
+    .not.<span class="fn">toMatch</span>(<span class="op">/</span><span class="st">peanut</span><span class="op">/</span>i)
+    .<span class="fn">toMatch</span>(<span class="op">/</span><span class="st">italian|pasta|pizza|risotto|bruschetta</span><span class="op">/</span>i)
+})</pre>
+
+    <h2>Multi-Step Task Progression</h2>
+    <p>Test that the model continues a multi-step tutorial or workflow correctly based on conversation history.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'follows multi-step instructions'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'You are a coding tutor helping a student build a todo app.'</span>,
+    messages: [
+      { role: <span class="st">'user'</span>, content: <span class="st">'I want to build a todo app in React.'</span> },
+      { role: <span class="st">'assistant'</span>, content: <span class="st">'Let\'s start with the project setup. First, create a new React project using create-react-app or Vite.'</span> },
+      { role: <span class="st">'user'</span>, content: <span class="st">'Done! I set up the project with Vite. What next?'</span> },
+      { role: <span class="st">'assistant'</span>, content: <span class="st">'Now let\'s create the TodoItem component. Create a file called TodoItem.tsx.'</span> },
+      { role: <span class="st">'user'</span>, content: <span class="st">'OK, I created the file. What should the component look like?'</span> },
+    ],
+  })
+
+  <span class="cm">// Should continue the tutorial flow and reference TodoItem</span>
+  <span class="fn">expect</span>(result)
+    .<span class="fn">toMatch</span>(<span class="op">/</span><span class="st">TodoItem|component|props|interface</span><span class="op">/</span>i)
+    .<span class="fn">toMatch</span>(<span class="op">/</span><span class="st">function|const|export</span><span class="op">/</span>i)
+})</pre>
+
+    <h2>Conversation with Corrections</h2>
+    <p>Test that the model gracefully handles being corrected by the user mid-conversation.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'handles user corrections gracefully'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'You are a geography assistant.'</span>,
+    messages: [
+      { role: <span class="st">'user'</span>, content: <span class="st">'What is the capital of Australia?'</span> },
+      { role: <span class="st">'assistant'</span>, content: <span class="st">'The capital of Australia is Sydney.'</span> },
+      { role: <span class="st">'user'</span>, content: <span class="st">'That is wrong. The capital is Canberra, not Sydney.'</span> },
+    ],
+  })
+
+  <span class="cm">// Should acknowledge the correction</span>
+  <span class="fn">expect</span>(result)
+    .<span class="fn">toContain</span>(<span class="st">'Canberra'</span>)
+    .<span class="fn">toMatch</span>(<span class="op">/</span><span class="st">correct|right|apolog|mistake|thank</span><span class="op">/</span>i)
+})</pre>
+
+    <h2>Building Up Complex Context</h2>
+    <p>Test that the model tracks multiple details accumulated over several turns and can summarize them accurately.</p>
+    <pre><span class="fn">evalite</span>(<span class="st">'maintains order details across turns'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+  <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({
+    model: <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>),
+    system: <span class="st">'You are a pizza ordering assistant.'</span>,
+    messages: [
+      { role: <span class="st">'user'</span>, content: <span class="st">'I want to order a large pizza.'</span> },
+      { role: <span class="st">'assistant'</span>, content: <span class="st">'A large pizza. What toppings would you like?'</span> },
+      { role: <span class="st">'user'</span>, content: <span class="st">'Pepperoni and mushrooms.'</span> },
+      { role: <span class="st">'assistant'</span>, content: <span class="st">'Large pizza with pepperoni and mushrooms. Anything else?'</span> },
+      { role: <span class="st">'user'</span>, content: <span class="st">'Add a side of garlic bread. Can you summarize my order?'</span> },
+    ],
+  })
+
+  <span class="fn">expect</span>(result)
+    .<span class="fn">toContain</span>(<span class="st">'large'</span>)
+    .<span class="fn">toContain</span>(<span class="st">'pepperoni'</span>)
+    .<span class="fn">toContain</span>(<span class="st">'mushroom'</span>)
+    .<span class="fn">toMatch</span>(<span class="op">/</span><span class="st">garlic bread</span><span class="op">/</span>i)
+})</pre>
+
+    <h2>Full Source</h2>
+    <p>See the complete example: <a href="https://github.com/nem035/agentevals/blob/main/examples/cookbook/multi-turn.eval.ts" style="color: var(--accent);">multi-turn.eval.ts</a></p>
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    <p>MIT License &middot; <a href="https://github.com/nem035/agentevals">GitHub</a> &middot; <a href="https://www.npmjs.com/package/@nem035/agentevals">npm</a></p>
+  </div>
+</footer>
+
+</body>
+</html>

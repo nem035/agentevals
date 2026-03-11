@@ -1,0 +1,444 @@
+/* ============================================================================
+   agentevals docs - minimal, clean stylesheet
+   ============================================================================ */
+
+:root {
+  --bg: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-tertiary: #21262d;
+  --text: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted: #6e7681;
+  --accent: #58a6ff;
+  --accent-subtle: #1f6feb33;
+  --green: #3fb950;
+  --red: #f85149;
+  --yellow: #d29922;
+  --border: #30363d;
+  --code-bg: #161b22;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --max-width: 900px;
+  --radius: 6px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Layout ---- */
+
+.container {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ---- Header / Nav ---- */
+
+header {
+  border-bottom: 1px solid var(--border);
+  padding: 16px 0;
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 100;
+}
+
+header .container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.logo {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.logo span {
+  color: var(--accent);
+}
+
+nav {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+}
+
+nav a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 14px;
+  transition: color 0.15s;
+}
+
+nav a:hover,
+nav a.active {
+  color: var(--text);
+}
+
+nav a.github {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ---- Hero ---- */
+
+.hero {
+  padding: 80px 0 60px;
+  text-align: center;
+}
+
+.hero h1 {
+  font-size: 48px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: 16px;
+}
+
+.hero h1 span {
+  color: var(--accent);
+}
+
+.hero p {
+  font-size: 20px;
+  color: var(--text-secondary);
+  max-width: 600px;
+  margin: 0 auto 32px;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.15s;
+  border: 1px solid transparent;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
+}
+
+.btn-secondary {
+  background: var(--bg-secondary);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.btn-secondary:hover {
+  border-color: var(--text-muted);
+}
+
+.install-cmd {
+  display: inline-block;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 24px;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--text);
+  margin-top: 24px;
+  user-select: all;
+}
+
+/* ---- Sections ---- */
+
+section {
+  padding: 60px 0;
+}
+
+section + section {
+  border-top: 1px solid var(--border);
+}
+
+section h2 {
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  letter-spacing: -0.01em;
+}
+
+section h3 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  margin-top: 32px;
+}
+
+section p {
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  max-width: 700px;
+}
+
+/* ---- Features grid ---- */
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-top: 32px;
+}
+
+.feature {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+}
+
+.feature h3 {
+  font-size: 16px;
+  margin-top: 0;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.feature p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 0;
+}
+
+/* ---- Code blocks ---- */
+
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 16px 0;
+  color: var(--text);
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+p code,
+li code {
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.85em;
+}
+
+/* Syntax highlighting (minimal) */
+.kw { color: #ff7b72; }
+.fn { color: #d2a8ff; }
+.st { color: #a5d6ff; }
+.cm { color: var(--text-muted); font-style: italic; }
+.nr { color: #79c0ff; }
+.op { color: #ff7b72; }
+.ty { color: #ffa657; }
+
+/* ---- Cookbook cards ---- */
+
+.cookbook-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.cookbook-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color 0.15s;
+  display: block;
+}
+
+.cookbook-card:hover {
+  border-color: var(--accent);
+}
+
+.cookbook-card h3 {
+  font-size: 16px;
+  margin: 0 0 8px 0;
+}
+
+.cookbook-card p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 0;
+}
+
+/* ---- API reference tables ---- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 14px;
+}
+
+th {
+  text-align: left;
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  font-weight: 600;
+  color: var(--text);
+}
+
+td {
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+td code {
+  color: var(--accent);
+  background: none;
+  padding: 0;
+}
+
+/* ---- Footer ---- */
+
+footer {
+  border-top: 1px solid var(--border);
+  padding: 32px 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+footer a {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+footer a:hover {
+  color: var(--text);
+}
+
+/* ---- Responsive ---- */
+
+@media (max-width: 640px) {
+  .hero h1 {
+    font-size: 32px;
+  }
+
+  .hero p {
+    font-size: 16px;
+  }
+
+  nav {
+    gap: 16px;
+  }
+
+  .features {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Cookbook page specific ---- */
+
+.cookbook-page {
+  padding: 40px 0 60px;
+}
+
+.cookbook-page h1 {
+  font-size: 36px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.cookbook-page .subtitle {
+  color: var(--text-secondary);
+  font-size: 16px;
+  margin-bottom: 32px;
+}
+
+.cookbook-page h2 {
+  font-size: 24px;
+  margin-top: 48px;
+  margin-bottom: 12px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+.cookbook-page h2:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.cookbook-page p {
+  max-width: none;
+}
+
+.breadcrumb {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 24px;
+}
+
+.breadcrumb a {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.breadcrumb a:hover {
+  color: var(--text);
+}
+
+/* ---- Back link ---- */
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 14px;
+  margin-bottom: 24px;
+}
+
+.back-link:hover {
+  color: var(--text);
+}

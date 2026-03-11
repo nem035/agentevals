@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cookbook - agentevals</title>
+  <meta name="description" content="Cookbook examples for agentevals: basic assertions, tool calls, LLM-as-judge, streaming, and more.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <a href="index.html" class="logo">agent<span>evals</span></a>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="cookbook.html" class="active">Cookbook</a>
+      <a href="api.html">API</a>
+      <a href="https://github.com/nem035/agentevals" class="github">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container">
+  <div class="cookbook-page">
+    <h1>Cookbook</h1>
+    <p class="subtitle">Practical examples showing how to test your AI apps with agentevals.</p>
+
+    <div class="cookbook-grid">
+      <a href="cookbook/basic-assertions.html" class="cookbook-card">
+        <h3>Basic Assertions</h3>
+        <p>toContain, toMatch, toAskQuestions, negation, and fluent chaining.</p>
+      </a>
+      <a href="cookbook/tool-calls.html" class="cookbook-card">
+        <h3>Tool Call Testing</h3>
+        <p>Mock executors, spy executors, argument matching, call counts, and result assertions.</p>
+      </a>
+      <a href="cookbook/llm-as-judge.html" class="cookbook-card">
+        <h3>LLM-as-Judge</h3>
+        <p>Use a separate model to evaluate responses against nuanced criteria.</p>
+      </a>
+      <a href="cookbook/streaming.html" class="cookbook-card">
+        <h3>Streaming</h3>
+        <p>Test streaming responses using AI SDK's streamText.</p>
+      </a>
+      <a href="cookbook/multi-turn.html" class="cookbook-card">
+        <h3>Multi-turn Conversations</h3>
+        <p>Test context retention, conversation flow, and multi-step interactions.</p>
+      </a>
+      <a href="cookbook/model-comparison.html" class="cookbook-card">
+        <h3>Model Comparison</h3>
+        <p>Run the same evals against different models and compare results.</p>
+      </a>
+      <a href="cookbook/custom-graders.html" class="cookbook-card">
+        <h3>Custom Graders</h3>
+        <p>Reusable grading functions for conciseness, PII detection, JSON validation, and more.</p>
+      </a>
+      <a href="cookbook/safety-guardrails.html" class="cookbook-card">
+        <h3>Safety &amp; Guardrails</h3>
+        <p>Test harmful request refusal, PII protection, prompt injection, and content moderation.</p>
+      </a>
+      <a href="cookbook/grouping.html" class="cookbook-card">
+        <h3>Grouping &amp; Organization</h3>
+        <p>Organize evals with evalite.group(), shared options, and parameterized suites.</p>
+      </a>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    <p>MIT License &middot; <a href="https://github.com/nem035/agentevals">GitHub</a> &middot; <a href="https://www.npmjs.com/package/@nem035/agentevals">npm</a></p>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,6 +1,6 @@
 {
   "name": "@nem035/agentevals",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A Vitest-like CLI for AI agent evaluations. Test your LLM apps with simple, declarative evals.",
   "type": "module",
   "main": "./dist/index.js",

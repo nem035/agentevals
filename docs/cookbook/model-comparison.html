@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Model Comparison - agentevals Cookbook</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <a href="../index.html" class="logo">agent<span>evals</span></a>
+    <nav>
+      <a href="../index.html">Home</a>
+      <a href="../cookbook.html" class="active">Cookbook</a>
+      <a href="../api.html">API</a>
+      <a href="https://github.com/nem035/agentevals" class="github">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container">
+  <div class="cookbook-page">
+    <div class="breadcrumb"><a href="../cookbook.html">Cookbook</a> / Model Comparison</div>
+    <h1>Model Comparison</h1>
+    <p class="subtitle">Demonstrates running the same eval against different models to compare their performance. Use groups to organize results by model.</p>
+
+    <h2>Setup</h2>
+    <p>Import <code>evalite</code> along with multiple AI providers to compare models side by side.</p>
+    <pre><span class="kw">import</span> { <span class="fn">evalite</span> } <span class="kw">from</span> <span class="st">'@nem035/agentevals'</span>
+<span class="kw">import</span> { <span class="fn">anthropic</span> } <span class="kw">from</span> <span class="st">'@ai-sdk/anthropic'</span>
+<span class="kw">import</span> { <span class="fn">openai</span> } <span class="kw">from</span> <span class="st">'@ai-sdk/openai'</span>
+<span class="kw">import</span> { <span class="fn">generateText</span> } <span class="kw">from</span> <span class="st">'ai'</span></pre>
+
+    <h2>Define Shared Test Prompts</h2>
+    <p>Define prompts once and reuse them across model groups to ensure a fair comparison.</p>
+    <pre><span class="kw">const</span> mathPrompt <span class="op">=</span> <span class="st">'Solve for x: 3x + 7 = 22. Show your work.'</span>
+<span class="kw">const</span> codingPrompt <span class="op">=</span> <span class="st">'Write a JavaScript function that checks if a string is a palindrome.'</span>
+<span class="kw">const</span> reasoningPrompt <span class="op">=</span> <span class="st">'If all cats are animals, and some animals are pets, can we conclude that some cats are pets? Explain.'</span></pre>
+
+    <h2>Claude Evaluations</h2>
+    <p>Group all Claude evals together using <code>evalite.group</code>. Each eval uses the same shared prompts.</p>
+    <pre><span class="fn">evalite</span>.<span class="fn">group</span>(<span class="st">'claude-sonnet'</span>, () <span class="op">=&gt;</span> {
+  <span class="kw">const</span> model <span class="op">=</span> <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>)
+
+  <span class="fn">evalite</span>(<span class="st">'solves algebra'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+    <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({ model, prompt: mathPrompt })
+    <span class="fn">expect</span>(result).<span class="fn">toContain</span>(<span class="st">'5'</span>)
+  })
+
+  <span class="fn">evalite</span>(<span class="st">'writes correct code'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+    <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({ model, prompt: codingPrompt })
+    <span class="fn">expect</span>(result)
+      .<span class="fn">toMatch</span>(<span class="op">/</span><span class="st">function|const|=&gt;</span><span class="op">/</span>)
+      .<span class="fn">toMatch</span>(<span class="op">/</span><span class="st">reverse|split|join</span><span class="op">/</span>i)
+  })
+
+  <span class="fn">evalite</span>(<span class="st">'handles logical reasoning'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+    <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({ model, prompt: reasoningPrompt })
+    <span class="cm">// The correct answer is: No, we cannot conclude that</span>
+    <span class="fn">expect</span>(result).<span class="fn">toMatch</span>(<span class="op">/</span><span class="st">cannot|can't|no|not necessarily</span><span class="op">/</span>i)
+  })
+})</pre>
+
+    <h2>GPT Evaluations</h2>
+    <p>Run the exact same evals against GPT-4o to compare results.</p>
+    <pre><span class="fn">evalite</span>.<span class="fn">group</span>(<span class="st">'gpt-4o'</span>, () <span class="op">=&gt;</span> {
+  <span class="kw">const</span> model <span class="op">=</span> <span class="fn">openai</span>(<span class="st">'gpt-4o'</span>)
+
+  <span class="fn">evalite</span>(<span class="st">'solves algebra'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+    <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({ model, prompt: mathPrompt })
+    <span class="fn">expect</span>(result).<span class="fn">toContain</span>(<span class="st">'5'</span>)
+  })
+
+  <span class="fn">evalite</span>(<span class="st">'writes correct code'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+    <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({ model, prompt: codingPrompt })
+    <span class="fn">expect</span>(result)
+      .<span class="fn">toMatch</span>(<span class="op">/</span><span class="st">function|const|=&gt;</span><span class="op">/</span>)
+      .<span class="fn">toMatch</span>(<span class="op">/</span><span class="st">reverse|split|join</span><span class="op">/</span>i)
+  })
+
+  <span class="fn">evalite</span>(<span class="st">'handles logical reasoning'</span>, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+    <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({ model, prompt: reasoningPrompt })
+    <span class="fn">expect</span>(result).<span class="fn">toMatch</span>(<span class="op">/</span><span class="st">cannot|can't|no|not necessarily</span><span class="op">/</span>i)
+  })
+})</pre>
+
+    <h2>Side-by-Side with Shared Assertions via Helper</h2>
+    <p>Extract a reusable helper function that creates a group of evals for any model. This pattern makes it easy to add new models to the comparison.</p>
+    <pre><span class="kw">function</span> <span class="fn">mathEval</span>(modelName<span class="ty">: string</span>, model<span class="ty">: Parameters&lt;typeof generateText&gt;[0]['model']</span>) {
+  <span class="fn">evalite</span>.<span class="fn">group</span>(<span class="st">`${modelName}-math-suite`</span>, () <span class="op">=&gt;</span> {
+    <span class="kw">const</span> problems <span class="op">=</span> [
+      { prompt: <span class="st">'What is 15% of 200?'</span>, expected: <span class="st">'30'</span> },
+      { prompt: <span class="st">'What is the square root of 144?'</span>, expected: <span class="st">'12'</span> },
+      { prompt: <span class="st">'What is 7 factorial?'</span>, expected: <span class="st">'5040'</span> },
+    ]
+
+    <span class="kw">for</span> (<span class="kw">const</span> { prompt, expected } <span class="kw">of</span> problems) {
+      <span class="fn">evalite</span>(prompt, <span class="kw">async</span> ({ expect }) <span class="op">=&gt;</span> {
+        <span class="kw">const</span> result <span class="op">=</span> <span class="kw">await</span> <span class="fn">generateText</span>({ model, prompt })
+        <span class="fn">expect</span>(result).<span class="fn">toContain</span>(expected)
+      })
+    }
+  })
+}
+
+<span class="fn">mathEval</span>(<span class="st">'claude'</span>, <span class="fn">anthropic</span>(<span class="st">'claude-sonnet-4-20250514'</span>))
+<span class="fn">mathEval</span>(<span class="st">'gpt-4o'</span>, <span class="fn">openai</span>(<span class="st">'gpt-4o'</span>))</pre>
+
+    <h2>Full Source</h2>
+    <p>See the complete example: <a href="https://github.com/nem035/agentevals/blob/main/examples/cookbook/model-comparison.eval.ts" style="color: var(--accent);">model-comparison.eval.ts</a></p>
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    <p>MIT License &middot; <a href="https://github.com/nem035/agentevals">GitHub</a> &middot; <a href="https://www.npmjs.com/package/@nem035/agentevals">npm</a></p>
+  </div>
+</footer>
+
+</body>
+</html>
