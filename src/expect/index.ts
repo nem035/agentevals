@@ -1,9 +1,11 @@
 import { generateText, type LanguageModel } from 'ai'
+import { z } from 'zod'
 import type {
   AIResult,
   GraderResult,
   GraderFn,
   JudgeOptions,
+  JudgeJudgment,
   ToolCallInfo,
   ToolResultInfo,
 } from '../types.js'
@@ -141,6 +143,51 @@ export const matchers = {
   arrayContaining,
   stringMatching,
   anything,
+}
+
+// ============================================================================
+// Judge Utilities
+// ============================================================================
+
+const DefaultJudgeSchema = z.object({
+  reasoning: z
+    .string()
+    .describe('Reason through the evidence before choosing a verdict.'),
+  evidence: z
+    .array(z.string())
+    .describe('Short quotes or phrases from the output that support the verdict.'),
+  score: z
+    .number()
+    .min(0)
+    .max(1)
+    .describe('Numeric confidence/quality score from 0 to 1.'),
+  verdict: z
+    .enum(['PASS', 'FAIL'])
+    .describe('Final verdict after considering the reasoning and evidence.'),
+}) satisfies z.ZodType<JudgeJudgment>
+
+function extractJsonObject(text: string): unknown {
+  try {
+    return JSON.parse(text)
+  } catch {
+    const start = text.indexOf('{')
+    const end = text.lastIndexOf('}')
+
+    if (start === -1 || end === -1 || end <= start) {
+      throw new Error('No JSON object found in judge response')
+    }
+
+    return JSON.parse(text.slice(start, end + 1))
+  }
+}
+
+function formatRubric(rubric: JudgeOptions['rubric']): string {
+  if (!rubric) {
+    return ''
+  }
+
+  const items = Array.isArray(rubric) ? rubric : [rubric]
+  return `\n\n## Additional Rubric\n${items.map((item) => `- ${item}`).join('\n')}`
 }
 
 // ============================================================================
@@ -449,6 +496,24 @@ export class Expect {
     const { criteria, threshold = 0.5 } = options
     const model = options.judge ?? this.judgeModel
 
+    if (this.result.text.trim().length === 0) {
+      const pass = this.negated
+      const result: GraderResult = {
+        pass,
+        score: 0,
+        reason: this.negated
+          ? 'Output is empty, so it did not pass judge (as expected)'
+          : 'Expected output to pass judge, but output was empty',
+      }
+      this.graderResults.push(result)
+
+      if (!pass) {
+        throw new ExpectationError(result, 'toPassJudge')
+      }
+
+      return this
+    }
+
     if (!model) {
       throw new Error(
         'No judge model configured. Pass a judge model to evalite() options or to toPassJudge({ judge: model }).'
@@ -458,15 +523,17 @@ export class Expect {
     // Call the judge model using AI SDK directly
     const judgeResult = await generateText({
       model,
+      temperature: options.temperature ?? 0,
       system: `You are an evaluation judge. Analyze the AI output and determine if it meets the given criteria.
-Respond with a JSON object containing:
-- "pass": boolean (true if the output meets the criteria)
-- "score": number between 0 and 1 (confidence score)
-- "reason": string (brief explanation of your judgment)
+Return ONLY a valid JSON object with these fields in this order:
+- "reasoning": string explaining the judgment using concrete evidence
+- "evidence": array of short quotes or phrases from the output that support the verdict
+- "score": number from 0 to 1
+- "verdict": "PASS" or "FAIL"
 
-Be objective and precise in your evaluation. Only output the JSON object, nothing else.`,
+Be objective and precise. Grade the final output, not the path the model may have taken.`,
       prompt: `## Criteria
-${criteria}
+${criteria}${formatRubric(options.rubric)}
 
 ## AI Output to Evaluate
 ${this.result.text}
@@ -475,36 +542,38 @@ ${this.result.text}
     })
 
     // Parse the judge response
-    let judgment: { pass: boolean; score: number; reason: string }
+    let judgment: JudgeJudgment
     try {
-      const jsonMatch = judgeResult.text.match(/\{[\s\S]*\}/)
-      if (!jsonMatch) {
-        throw new Error('No JSON found in judge response')
-      }
-      judgment = JSON.parse(jsonMatch[0])
-    } catch {
+      const schema = options.schema ?? DefaultJudgeSchema
+      judgment = schema.parse(extractJsonObject(judgeResult.text))
+    } catch (err) {
       judgment = {
-        pass: false,
+        verdict: 'FAIL',
         score: 0,
-        reason: `Failed to parse judge response: ${judgeResult.text}`,
+        reasoning: `Failed to parse judge response: ${err instanceof Error ? err.message : String(err)}`,
+        evidence: [],
       }
     }
 
-    const passesThreshold = judgment.score >= threshold
+    const passesThreshold = judgment.verdict === 'PASS' && judgment.score >= threshold
     const pass = this.negated ? !passesThreshold : passesThreshold
 
     const judgeUsage = judgeResult.usage
+    const evidence =
+      judgment.evidence.length > 0
+        ? ` Evidence: ${judgment.evidence.map((item) => `"${item}"`).join('; ')}`
+        : ''
 
     const result: GraderResult = {
       pass,
       score: judgment.score,
       reason: this.negated
         ? passesThreshold
-          ? `Expected NOT to pass judge (score: ${judgment.score}). ${judgment.reason}`
-          : `Did not pass judge (as expected). ${judgment.reason}`
+          ? `Expected NOT to pass judge (score: ${judgment.score}). ${judgment.reasoning}${evidence}`
+          : `Did not pass judge (as expected). ${judgment.reasoning}${evidence}`
         : passesThreshold
-          ? `Passed judge (score: ${judgment.score}). ${judgment.reason}`
-          : `Failed judge (score: ${judgment.score}, threshold: ${threshold}). ${judgment.reason}`,
+          ? `Passed judge (score: ${judgment.score}). ${judgment.reasoning}${evidence}`
+          : `Failed judge (score: ${judgment.score}, threshold: ${threshold}). ${judgment.reasoning}${evidence}`,
       usage: {
         inputTokens: judgeUsage.inputTokens ?? 0,
         outputTokens: judgeUsage.outputTokens ?? 0,

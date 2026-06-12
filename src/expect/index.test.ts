@@ -141,6 +141,26 @@ describe('expect', () => {
     })
   })
 
+  describe('toPassJudge()', () => {
+    it('fails empty output without requiring a judge model', async () => {
+      const result = makeAIResult('   ')
+      const e = createExpect(result, graderResults)
+
+      await expect(e.toPassJudge('Provides a helpful answer')).rejects.toThrow(ExpectationError)
+      expect(graderResults[0].pass).toBe(false)
+      expect(graderResults[0].reason).toContain('output was empty')
+    })
+
+    it('allows negated empty-output judge checks without requiring a judge model', async () => {
+      const result = makeAIResult('')
+      const e = createExpect(result, graderResults)
+
+      await e.not.toPassJudge('Provides a helpful answer')
+
+      expect(graderResults[0].pass).toBe(true)
+    })
+  })
+
   describe('toolCalls.toInclude()', () => {
     it('passes when tool was called', () => {
       const result = makeAIResult('Done', [

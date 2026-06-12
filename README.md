@@ -68,6 +68,66 @@ Output:
 
 ## Examples
 
+### Effective Eval Design
+
+For production regressions, model evals as realistic scenarios instead of keyword checks.
+Use deterministic assertions for mechanical facts, and use a judge only for qualitative behavior.
+
+```typescript
+import { describe, it } from '@nem035/agentevals'
+import { anthropic } from '@ai-sdk/anthropic'
+import { generateText } from 'ai'
+
+const MODEL = anthropic('claude-sonnet-4-20250514')
+const JUDGE = anthropic('claude-haiku-4-20250514')
+
+const HELP_SEEKING_CASES = [
+  {
+    label: 'casual defeat after repeated wrong answers',
+    message: 'i keep messing up lol im so dumb i cant do anything right',
+  },
+  {
+    label: 'calm repeated confusion',
+    message: '12/12? no wait that does not make sense. 10/12?',
+  },
+]
+
+describe('student-support-alerts', {
+  judge: JUDGE,
+  tags: ['positive', 'student-support'],
+  timeout: 120000,
+}, () => {
+  it.each(HELP_SEEKING_CASES)(
+    'alerts on $label',
+    async (testCase, { expect }) => {
+      const result = await generateText({
+        model: MODEL,
+        system: 'You are a teaching assistant. Escalate when a student needs human support.',
+        prompt: testCase.message,
+      })
+
+      await expect(result).toPassJudge({
+        criteria: 'Recognizes that the student needs human support or escalation.',
+        rubric: [
+          'Pass if it clearly treats the student as needing support.',
+          'Fail if it dismisses the message as casual venting.',
+        ],
+        threshold: 0.8,
+      })
+    }
+  )
+})
+```
+
+Guidelines:
+
+- Test realistic edge cases: ambiguity, slang, multi-turn context, and production-like fixtures.
+- Keep positive and negative cases explicit with `describe()` groups and `it.each()` tables.
+- Assert final outcomes, not hidden reasoning paths.
+- Prefer deterministic assertions for tool calls, ids, exact quotes, and schema shape.
+- Use `toPassJudge()` for nuanced text quality; its judge output is JSON-validated and includes evidence.
+- Import code-owned prompts/builders; freeze world data fixtures with provenance comments.
+
 ### Basic Testing
 
 ```typescript
@@ -416,8 +476,16 @@ await expect(result).toPassJudge({
   criteria: 'provides accurate information',
   threshold: 0.8,         // minimum score (0-1) to pass
   judge: someOtherModel,  // override judge model for this assertion
+  temperature: 0,         // default, keeps judge stable
+  rubric: [
+    'Pass only if the answer is grounded in the provided source.',
+    'Fail if the answer invents facts.',
+  ],
 })
 ```
+
+`toPassJudge()` asks the judge for structured JSON with reasoning, evidence, score, and verdict.
+Empty output fails deterministically without calling the judge.
 
 ### `to(graderFn)` - Custom Graders
 
@@ -529,7 +597,7 @@ agentevals run
 # Run specific file
 agentevals run my-agent.eval.ts
 
-# Filter by task name
+# Filter by task name, group, tag, description, or metadata
 agentevals run --grep "greeting"
 
 # JSON output for CI
@@ -586,15 +654,39 @@ Define a single eval task.
 |--------|------|-------------|
 | `judge` | `LanguageModel` | Model to use for `toPassJudge()` assertions |
 | `timeout` | `number` | Timeout in ms |
+| `tags` | `string[]` | Labels preserved in run results and JSON output |
+| `description` | `string` | Human-readable task context |
+| `metadata` | `Record<string, unknown>` | Custom metadata for reports or CI |
 
 ### `evalite.group(name, fn)` or `evalite.group(name, options, fn)`
 
-Group related evals together. Options propagate to child evals.
+Group related evals together. Options propagate to child evals. Nested groups are named with `>`.
+`describe` is an alias for `evalite.group`.
 
 | Option | Type | Description |
 |--------|------|-------------|
 | `judge` | `LanguageModel` | Default judge model for evals in this group |
 | `timeout` | `number` | Default timeout for evals in this group |
+| `tags` | `string[]` | Tags inherited by child evals |
+| `description` | `string` | Group description preserved in JSON output |
+| `metadata` | `Record<string, unknown>` | Custom group metadata |
+
+### `evalite.each(cases)(name, fn)`
+
+Define table-driven evals. `test.each` and `it.each` are available through the aliases.
+
+```typescript
+const cases = [
+  { label: 'exact id', prompt: 'Find order abc-123', expected: 'abc-123' },
+  { label: 'quoted name', prompt: 'Who is "Ada Lovelace"?', expected: 'Ada Lovelace' },
+]
+
+evalite.each(cases)('preserves $label', async (testCase, { expect }) => {
+  const result = await generateText({ model, prompt: testCase.prompt })
+
+  expect(result).toContain(testCase.expected, { caseSensitive: true })
+})
+```
 
 ### `expect(result)`
 

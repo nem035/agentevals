@@ -1,4 +1,13 @@
-import type { EvalTask, EvalFn, EvaliteOptions, EvalGroup } from '../types.js'
+import type {
+  EvalTask,
+  EvalFn,
+  EvaliteOptions,
+  EvalGroup,
+  EvalCaseFn,
+  EvalCaseName,
+  EvaliteApi,
+} from '../types.js'
+import { mergeEvalOptions } from './options.js'
 
 /**
  * Global registry for collecting eval tasks during file loading.
@@ -7,7 +16,7 @@ import type { EvalTask, EvalFn, EvaliteOptions, EvalGroup } from '../types.js'
 
 let collectedTasks: EvalTask[] = []
 let collectedGroups: EvalGroup[] = []
-let currentGroup: EvalGroup | null = null
+let groupStack: EvalGroup[] = []
 let currentFile: string = ''
 
 export function setCurrentFile(file: string): void {
@@ -21,7 +30,7 @@ export function getCurrentFile(): string {
 export function resetRegistry(): void {
   collectedTasks = []
   collectedGroups = []
-  currentGroup = null
+  groupStack = []
   currentFile = ''
 }
 
@@ -53,19 +62,20 @@ export function getCollectedGroups(): EvalGroup[] {
  *   await expect(result).toPassJudge('Answers correctly')
  * })
  */
-export function evalite(
+function defineEval(
   name: string,
   optionsOrFn: EvaliteOptions | EvalFn,
   maybeFn?: EvalFn
 ): void {
-  const options: EvaliteOptions = typeof optionsOrFn === 'function' ? {} : optionsOrFn
-  const fn = typeof optionsOrFn === 'function' ? optionsOrFn : maybeFn!
+  const { options, fn } = resolveEvalArgs(optionsOrFn, maybeFn)
+  const currentGroup = groupStack.at(-1)
 
   const task: EvalTask = {
     name,
     fn,
     options,
     group: currentGroup?.name,
+    file: currentFile || undefined,
   }
 
   if (currentGroup) {
@@ -86,29 +96,95 @@ export function evalite(
  *   evalite('subtraction', async ({ expect }) => { ... })
  * })
  */
-evalite.group = function group(
+function group(
   name: string,
   optionsOrFn: EvaliteOptions | (() => void),
   maybeFn?: () => void
 ): void {
   const options: EvaliteOptions = typeof optionsOrFn === 'function' ? {} : optionsOrFn
-  const fn = typeof optionsOrFn === 'function' ? optionsOrFn : maybeFn!
+  const fn = typeof optionsOrFn === 'function' ? optionsOrFn : maybeFn
 
+  if (!fn) {
+    throw new TypeError('evalite.group() requires a callback function')
+  }
+
+  const parentGroup = groupStack.at(-1)
   const evalGroup: EvalGroup = {
-    name,
+    name: parentGroup ? `${parentGroup.name} > ${name}` : name,
     tasks: [],
-    options,
+    options: mergeEvalOptions(parentGroup?.options, options),
   }
 
   collectedGroups.push(evalGroup)
-  currentGroup = evalGroup
+  groupStack.push(evalGroup)
 
-  // Execute the group body to collect tasks
-  fn()
-
-  currentGroup = null
+  try {
+    // Execute the group body to collect tasks
+    fn()
+  } finally {
+    groupStack.pop()
+  }
 }
 
+function each<TCase>(cases: readonly TCase[]) {
+  return function registerEach(
+    name: EvalCaseName<TCase>,
+    optionsOrFn: EvaliteOptions | EvalCaseFn<TCase>,
+    maybeFn?: EvalCaseFn<TCase>
+  ): void {
+    const options: EvaliteOptions = typeof optionsOrFn === 'function' ? {} : optionsOrFn
+    const fn = typeof optionsOrFn === 'function' ? optionsOrFn : maybeFn
+
+    if (!fn) {
+      throw new TypeError('evalite.each() requires a callback function')
+    }
+
+    cases.forEach((testCase, index) => {
+      const resolvedName =
+        typeof name === 'function' ? name(testCase, index) : interpolateCaseName(name, testCase, index)
+
+      defineEval(resolvedName, options, (context) => fn(testCase, context))
+    })
+  }
+}
+
+function resolveEvalArgs(
+  optionsOrFn: EvaliteOptions | EvalFn,
+  maybeFn?: EvalFn
+): { options: EvaliteOptions; fn: EvalFn } {
+  if (typeof optionsOrFn === 'function') {
+    return { options: {}, fn: optionsOrFn }
+  }
+
+  if (!maybeFn) {
+    throw new TypeError('evalite() requires a callback function')
+  }
+
+  return { options: optionsOrFn, fn: maybeFn }
+}
+
+function interpolateCaseName<TCase>(
+  name: string,
+  testCase: TCase,
+  index: number
+): string {
+  const values =
+    typeof testCase === 'object' && testCase !== null
+      ? (testCase as Record<string, unknown>)
+      : {}
+
+  return name
+    .replace(/\$#/g, String(index))
+    .replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (match, key: string) =>
+      key in values ? String(values[key]) : match
+    )
+}
+
+export const evalite = defineEval as EvaliteApi
+evalite.group = group
+evalite.each = each
+
 // Aliases for familiarity
-export { evalite as test }
-export { evalite as it }
+export const test = evalite
+export const it = evalite
+export const describe = evalite.group

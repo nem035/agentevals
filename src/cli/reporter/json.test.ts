@@ -110,6 +110,40 @@ describe('createJsonReporter', () => {
     expect(task).toHaveProperty('trials')
   })
 
+  it('includes group and task metadata when present', () => {
+    const reporter = createJsonReporter()
+    const result = createMockRunResult({
+      groups: [
+        {
+          name: 'test-group',
+          tags: ['positive'],
+          metadata: { area: 'support' },
+          duration: 100,
+          tasks: [
+            {
+              name: 'test-task',
+              tags: ['judge'],
+              description: 'Checks support behavior',
+              metadata: { fixture: 'prod-chat' },
+              status: 'passed',
+              duration: 100,
+              trials: [],
+            },
+          ],
+        },
+      ],
+    })
+
+    reporter.onEnd?.(result)
+
+    const output = JSON.parse(consoleSpy.mock.calls[0][0] as string)
+    expect(output.groups[0].tags).toEqual(['positive'])
+    expect(output.groups[0].metadata).toEqual({ area: 'support' })
+    expect(output.groups[0].tasks[0].tags).toEqual(['judge'])
+    expect(output.groups[0].tasks[0].description).toBe('Checks support behavior')
+    expect(output.groups[0].tasks[0].metadata).toEqual({ fixture: 'prod-chat' })
+  })
+
   it('includes grader results in trials', () => {
     const reporter = createJsonReporter()
     const result = createMockRunResult()

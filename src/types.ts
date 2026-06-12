@@ -6,6 +6,7 @@
  */
 
 import type { LanguageModel } from 'ai'
+import type { z } from 'zod'
 
 // ============================================================================
 // AI Result Interface
@@ -82,6 +83,12 @@ export interface EvaliteOptions {
   judge?: LanguageModel
   /** Timeout in milliseconds for this eval */
   timeout?: number
+  /** Short labels for filtering, reporting, or grouping eval intent */
+  tags?: string[]
+  /** Human-readable context shown by reporters and JSON output */
+  description?: string
+  /** Extra user-defined metadata preserved on registered tasks/groups */
+  metadata?: EvalMetadata
 }
 
 export interface EvalContext {
@@ -89,13 +96,40 @@ export interface EvalContext {
   expect: (result: AIResult) => ExpectInterface
 }
 
-export type EvalFn = (context: EvalContext) => Promise<void>
+export type EvalFn = (context: EvalContext) => void | Promise<void>
+export type EvalCaseName<TCase> = string | ((testCase: TCase, index: number) => string)
+export type EvalCaseFn<TCase> = (
+  testCase: TCase,
+  context: EvalContext
+) => void | Promise<void>
+
+export interface EvaliteEach<TCase> {
+  (name: EvalCaseName<TCase>, fn: EvalCaseFn<TCase>): void
+  (name: EvalCaseName<TCase>, options: EvaliteOptions, fn: EvalCaseFn<TCase>): void
+}
+
+export interface EvaliteGroupFn {
+  (name: string, fn: () => void): void
+  (name: string, options: EvaliteOptions, fn: () => void): void
+}
+
+export interface EvaliteApi {
+  (name: string, fn: EvalFn): void
+  (name: string, options: EvaliteOptions, fn: EvalFn): void
+  group: EvaliteGroupFn
+  each: <TCase>(cases: readonly TCase[]) => EvaliteEach<TCase>
+}
+
+export interface EvalMetadata {
+  [key: string]: unknown
+}
 
 export interface EvalTask {
   name: string
   fn: EvalFn
   options: EvaliteOptions
   group?: string
+  file?: string
 }
 
 export interface EvalGroup {
@@ -139,6 +173,23 @@ export interface JudgeOptions {
   threshold?: number
   /** Override the judge model for this specific assertion */
   judge?: LanguageModel
+  /** Sampling temperature for the judge call. Defaults to 0 for stable evals. */
+  temperature?: number
+  /** Additional rubric reminders to include after the core criteria. */
+  rubric?: string | string[]
+  /** Override the structured judgment schema used to validate the judge output. */
+  schema?: z.ZodType<JudgeJudgment>
+}
+
+export interface JudgeJudgment {
+  /** Reasoning comes first to encourage an evidence-backed verdict. */
+  reasoning: string
+  /** Specific phrases from the output that support the verdict. */
+  evidence: string[]
+  /** Numeric confidence/quality score from 0 to 1. */
+  score: number
+  /** Final verdict after considering the reasoning and evidence. */
+  verdict: 'PASS' | 'FAIL'
 }
 
 // ============================================================================
@@ -158,6 +209,11 @@ export interface TrialResult {
 
 export interface TaskResult {
   name: string
+  group?: string
+  file?: string
+  tags?: string[]
+  description?: string
+  metadata?: EvalMetadata
   status: TaskStatus
   trials: TrialResult[]
   duration: number
@@ -165,6 +221,9 @@ export interface TaskResult {
 
 export interface GroupResult {
   name: string
+  tags?: string[]
+  description?: string
+  metadata?: EvalMetadata
   tasks: TaskResult[]
   duration: number
 }

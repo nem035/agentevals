@@ -12,6 +12,7 @@ import type {
 } from '../types.js'
 import { createEvalContext } from './context.js'
 import { ExpectationError } from '../expect/index.js'
+import { mergeEvalOptions } from './options.js'
 
 export interface RunnerOptions {
   config: EvaliteConfig
@@ -27,6 +28,40 @@ interface CostTracker {
   exceeded: boolean
 }
 
+class EvalTimeoutError extends Error {
+  constructor(taskName: string, timeoutMs: number) {
+    super(`Eval "${taskName}" timed out after ${timeoutMs}ms`)
+    this.name = 'EvalTimeoutError'
+  }
+}
+
+async function runWithTimeout<T>(
+  taskName: string,
+  timeoutMs: number | undefined,
+  fn: () => T | Promise<T>
+): Promise<T> {
+  if (!timeoutMs) {
+    return await fn()
+  }
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+
+  try {
+    return await Promise.race([
+      Promise.resolve().then(fn),
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new EvalTimeoutError(taskName, timeoutMs))
+        }, timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
+  }
+}
+
 /**
  * Run a single task trial
  */
@@ -38,6 +73,7 @@ async function runTrial(
 ): Promise<TrialResult> {
   const startTime = Date.now()
   const graderResults: GraderResult[] = []
+  const resolvedOptions = mergeEvalOptions(groupOptions, task.options)
 
   // Create context with grader collection
   const context = createEvalContext(
@@ -66,7 +102,11 @@ async function runTrial(
     }
 
     // Run the eval function
-    await task.fn(context)
+    await runWithTimeout(
+      task.name,
+      resolvedOptions.timeout ?? _options.config.timeout,
+      () => task.fn(context)
+    )
 
     // Check if any grader failed
     const failed = graderResults.some((r) => !r.pass)
@@ -120,6 +160,7 @@ async function runTask(
   const { config } = options
   const trials = config.trials ?? 1
   const startTime = Date.now()
+  const resolvedOptions = mergeEvalOptions(groupOptions, task.options)
 
   options.onTaskStart?.(task)
 
@@ -162,6 +203,11 @@ async function runTask(
 
   const result: TaskResult = {
     name: task.name,
+    group: task.group,
+    file: task.file,
+    tags: resolvedOptions.tags,
+    description: resolvedOptions.description,
+    metadata: resolvedOptions.metadata,
     status,
     trials: trialResults,
     duration,
@@ -212,6 +258,9 @@ async function runGroup(
 
   const result: GroupResult = {
     name: group.name,
+    tags: group.options.tags,
+    description: group.options.description,
+    metadata: group.options.metadata,
     tasks: taskResults,
     duration,
   }
@@ -238,6 +287,10 @@ export async function runEvals(
 
   // Run grouped tasks
   for (const group of groups) {
+    if (group.tasks.length === 0) {
+      continue
+    }
+
     const result = await runGroup(group, { ...options, maxCost }, costTracker)
     groupResults.push(result)
   }

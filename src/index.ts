@@ -1,5 +1,5 @@
 // Core eval functions
-export { evalite, test, it } from './core/registry.js'
+export { evalite, test, it, describe } from './core/registry.js'
 
 // Tool testing helpers
 export { createMockExecutor, createSpyExecutor } from './tools.js'
@@ -24,9 +24,14 @@ export type {
   // Eval types
   EvalTask,
   EvaliteOptions,
+  EvaliteApi,
+  EvaliteEach,
   EvalGroup,
   EvalContext,
   EvalFn,
+  EvalCaseFn,
+  EvalCaseName,
+  EvalMetadata,
 
   // Grading
   GraderResult,

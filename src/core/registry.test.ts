@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
   evalite,
+  describe as evaliteDescribe,
   resetRegistry,
   setCurrentFile,
   getCollectedTasks,
   getCollectedGroups,
 } from './registry.js'
+import { createExpect } from '../expect/index.js'
 
 describe('registry', () => {
   beforeEach(() => {
@@ -42,6 +44,14 @@ describe('registry', () => {
 
       const tasks = getCollectedTasks()
       expect(tasks).toHaveLength(3)
+    })
+
+    it('records the source file for tasks', () => {
+      setCurrentFile('/test/file.eval.ts')
+
+      evalite('task-with-file', async () => {})
+
+      expect(getCollectedTasks()[0].file).toBe('/test/file.eval.ts')
     })
 
     it('ungrouped tasks have no group property', () => {
@@ -103,6 +113,84 @@ describe('registry', () => {
 
       const groups = getCollectedGroups()
       expect(groups).toHaveLength(2)
+    })
+
+    it('supports nested groups with inherited names and options', () => {
+      setCurrentFile('/test/file.eval.ts')
+
+      evalite.group('outer', { tags: ['outer'] }, () => {
+        evalite.group('inner', { tags: ['inner'] }, () => {
+          evalite('nested-task', async () => {})
+        })
+        evalite('outer-task', async () => {})
+      })
+
+      const groups = getCollectedGroups()
+      expect(groups.map((group) => group.name)).toEqual(['outer', 'outer > inner'])
+      expect(groups[0].tasks[0].name).toBe('outer-task')
+      expect(groups[1].tasks[0].name).toBe('nested-task')
+      expect(groups[1].options.tags).toEqual(['outer', 'inner'])
+    })
+
+    it('exports describe as a group alias', () => {
+      setCurrentFile('/test/file.eval.ts')
+
+      evaliteDescribe('aliased-group', () => {
+        evalite('task', async () => {})
+      })
+
+      expect(getCollectedGroups()[0].name).toBe('aliased-group')
+    })
+  })
+
+  describe('evalite.each()', () => {
+    it('registers one task per case with interpolated names', () => {
+      setCurrentFile('/test/file.eval.ts')
+
+      evalite.each([
+        { label: 'first', expected: 1 },
+        { label: 'second', expected: 2 },
+      ])('case $#: $label', async () => {})
+
+      expect(getCollectedTasks().map((task) => task.name)).toEqual([
+        'case 0: first',
+        'case 1: second',
+      ])
+    })
+
+    it('passes each case into the callback', async () => {
+      setCurrentFile('/test/file.eval.ts')
+
+      evalite.each([{ value: 42 }])('uses case', async (testCase, { expect: assert }) => {
+        assert({
+          text: String(testCase.value),
+          toolCalls: [],
+          toolResults: [],
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          totalUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          steps: [],
+        }).toContain('42')
+      })
+
+      const task = getCollectedTasks()[0]
+      await task.fn({
+        expect: (result) => createExpect(result, []),
+      })
+    })
+
+    it('supports function-based case names and shared options', () => {
+      setCurrentFile('/test/file.eval.ts')
+
+      evalite.each([{ label: 'alpha' }])(
+        (testCase) => `generated ${testCase.label}`,
+        { timeout: 1234, tags: ['table'] },
+        async () => {}
+      )
+
+      const task = getCollectedTasks()[0]
+      expect(task.name).toBe('generated alpha')
+      expect(task.options.timeout).toBe(1234)
+      expect(task.options.tags).toEqual(['table'])
     })
   })
 

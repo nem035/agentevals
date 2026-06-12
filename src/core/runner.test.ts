@@ -144,6 +144,54 @@ describe('runEvals', () => {
     expect(result.summary.passed).toBe(2)
   })
 
+  it('includes resolved task metadata in results', async () => {
+    const groups: EvalGroup[] = [
+      {
+        name: 'quality',
+        options: { tags: ['positive'], metadata: { suite: 'quality' } },
+        tasks: [
+          {
+            name: 'helpful-answer',
+            fn: async () => {},
+            options: { tags: ['judge'], description: 'Checks answer quality' },
+            group: 'quality',
+            file: '/test/helpful.eval.ts',
+          },
+        ],
+      },
+    ]
+
+    const result = await runEvals(groups, [], {
+      config: createMockConfig(),
+    })
+
+    const task = result.groups[0].tasks[0]
+    expect(task.tags).toEqual(['positive', 'judge'])
+    expect(task.description).toBe('Checks answer quality')
+    expect(task.metadata).toEqual({ suite: 'quality' })
+    expect(task.file).toBe('/test/helpful.eval.ts')
+  })
+
+  it('errors when a task exceeds its timeout', async () => {
+    const tasks: EvalTask[] = [
+      {
+        name: 'timeout-task',
+        fn: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 50))
+        },
+        options: { timeout: 5 },
+      },
+    ]
+
+    const result = await runEvals([], tasks, {
+      config: createMockConfig({ timeout: 1000 }),
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.ungrouped[0].status).toBe('error')
+    expect(result.ungrouped[0].trials[0].error).toContain('timed out after 5ms')
+  })
+
   it('calls lifecycle hooks', async () => {
     const onTaskStart = vi.fn()
     const onTaskEnd = vi.fn()
