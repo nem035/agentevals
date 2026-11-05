@@ -1,259 +1,175 @@
 /**
- * Core types for agentevals
+ * Core types for agentevals.
  *
- * Designed to work natively with AI SDK (ai package) types.
- * Users bring their own models and call generateText/streamText directly.
+ * The model: an eval is a list of cases, a task (your production code), and
+ * graders. Each case runs one or more trials. A trial either measured the
+ * model (status "ok", graded pass or fail) or it broke (timed out, errored,
+ * got cut off, or the grader itself failed) and is kept out of the score.
  */
 
-import type { LanguageModel } from 'ai'
-import type { z } from 'zod'
+// ---------------------------------------------------------------------------
+// Defining evals
+// ---------------------------------------------------------------------------
 
-// ============================================================================
-// AI Result Interface
-// ============================================================================
-
-/**
- * Minimal interface for what we need from an AI SDK result.
- * Works with both GenerateTextResult (sync props) and
- * StreamTextResult (PromiseLike props) after awaiting.
- */
-export interface AIResult {
-  /** The generated text */
-  text: string
-  /** Tool calls made during generation */
-  toolCalls: readonly ToolCallInfo[]
-  /** Tool results from execution */
-  toolResults: readonly ToolResultInfo[]
-  /** Token usage information */
-  usage: UsageInfo
-  /** Total usage across all steps */
-  totalUsage: UsageInfo
-  /** Step-by-step details */
-  steps: readonly StepInfo[]
+/** One input with what you expect back. `id` must be stable across runs. */
+export interface Case<Input = unknown, Expected = unknown> {
+  id: string
+  input: Input
+  expected?: Expected
+  tags?: string[]
 }
 
-export interface ToolCallInfo {
-  type: 'tool-call'
-  toolCallId: string
-  toolName: string
-  input: unknown
+export interface TaskContext {
+  /** Aborted when the trial times out. Pass it to your model call. */
+  signal: AbortSignal
+  /** 0-based trial number for this case. */
+  trial: number
+  caseId: string
 }
 
-export interface ToolResultInfo {
-  type: 'tool-result'
-  toolCallId: string
-  toolName: string
-  input: unknown
-  output: unknown
-}
+/** The code under test. Call your production code path from here. */
+export type Task<Input = unknown, Output = unknown> = (input: Input, ctx: TaskContext) => Output | Promise<Output>
 
-export interface UsageInfo {
-  inputTokens: number | undefined
-  outputTokens: number | undefined
-  totalTokens: number | undefined
-}
-
-export interface StepInfo {
-  text: string
-  toolCalls: readonly ToolCallInfo[]
-  toolResults: readonly ToolResultInfo[]
-  usage: UsageInfo
-}
-
-// ============================================================================
-// Grading
-// ============================================================================
-
-export interface GraderResult {
+/** What a grader returns. `true`/`false` is shorthand for `{ pass }`. */
+export interface Verdict {
   pass: boolean
-  reason: string
-  score?: number
-  usage?: UsageInfo
-  costUsd?: number
+  reason?: string
+  /** Quotes from the output that support the verdict. */
+  evidence?: string[]
 }
 
-export type GraderFn = (result: AIResult) => GraderResult | Promise<GraderResult>
-
-// ============================================================================
-// Eval Structure
-// ============================================================================
-
-export interface EvaliteOptions {
-  /** LLM model to use as a judge for toPassJudge() assertions */
-  judge?: LanguageModel
-  /** Timeout in milliseconds for this eval */
-  timeout?: number
-  /** Short labels for filtering, reporting, or grouping eval intent */
-  tags?: string[]
-  /** Human-readable context shown by reporters and JSON output */
-  description?: string
-  /** Extra user-defined metadata preserved on registered tasks/groups */
-  metadata?: EvalMetadata
+export interface GradeContext {
+  /** The judge model from config or the eval, if any. */
+  judgeModel?: JudgeModel
 }
 
-export interface EvalContext {
-  /** Create assertions on an AI SDK result */
-  expect: (result: AIResult) => ExpectInterface
-}
-
-export type EvalFn = (context: EvalContext) => void | Promise<void>
-export type EvalCaseName<TCase> = string | ((testCase: TCase, index: number) => string)
-export type EvalCaseFn<TCase> = (
-  testCase: TCase,
-  context: EvalContext
-) => void | Promise<void>
-
-export interface EvaliteEach<TCase> {
-  (name: EvalCaseName<TCase>, fn: EvalCaseFn<TCase>): void
-  (name: EvalCaseName<TCase>, options: EvaliteOptions, fn: EvalCaseFn<TCase>): void
-}
-
-export interface EvaliteGroupFn {
-  (name: string, fn: () => void): void
-  (name: string, options: EvaliteOptions, fn: () => void): void
-}
-
-export interface EvaliteApi {
-  (name: string, fn: EvalFn): void
-  (name: string, options: EvaliteOptions, fn: EvalFn): void
-  group: EvaliteGroupFn
-  each: <TCase>(cases: readonly TCase[]) => EvaliteEach<TCase>
-}
-
-export interface EvalMetadata {
-  [key: string]: unknown
-}
-
-export interface EvalTask {
+export interface Grader<Output = any, C extends Case = Case<any, any>> {
+  /** Name the grader after what it actually checks. It appears in every failure. */
   name: string
-  fn: EvalFn
-  options: EvaliteOptions
-  group?: string
-  file?: string
+  /** "judge" graders are model-based and can be checked with `check-judge`. */
+  kind: 'code' | 'judge'
+  grade: (output: Output, testCase: C, ctx: GradeContext) => Verdict | boolean | Promise<Verdict | boolean>
 }
 
-export interface EvalGroup {
+/** Sends one prompt to a model and returns its text. Bring any client. */
+export type JudgeModel = (prompt: string) => Promise<string>
+
+export interface EvalOptions {
+  /** Trials per case. Reported as a per-case pass rate. Default 1. */
+  trials?: number
+  /** Share of cases (by stable hash of id) held out as a test set, e.g. 0.3. */
+  holdout?: number
+  /** Gate: every case must pass every trial. Default false (scored). */
+  gate?: boolean
+  /** Per-trial timeout in ms. Default 60_000. */
+  timeoutMs?: number
+  /** Fail the run if more than this share of trials broke. Default 0.05. */
+  maxBroken?: number
+  /** Optional minimum score (0 to 1) for the run to succeed. */
+  minScore?: number
+  /** Judge model for this eval. Overrides the config's judge. */
+  judgeModel?: JudgeModel
+}
+
+export interface EvalDefinition<Input = any, Output = any, Expected = any> extends EvalOptions {
   name: string
-  tasks: EvalTask[]
-  options: EvaliteOptions
+  /** Cases, or a path to a .json / .jsonl file of cases (relative to the eval file). */
+  cases: readonly Case<Input, Expected>[] | string
+  /** The code under test. Use `variants` instead to compare several. */
+  task?: Task<Input, Output>
+  /** Several versions of the task, run on the same cases and compared. The first is the baseline. */
+  variants?: Record<string, Task<Input, Output>>
+  graders: readonly Grader<Output, Case<Input, Expected>>[]
 }
 
-// ============================================================================
-// Expect Interfaces
-// ============================================================================
-
-export interface ExpectInterface {
-  not: ExpectInterface
-  toolCalls: ToolCallsExpectInterface
-  /** Assert the text contains a substring (case-insensitive by default) */
-  toContain(text: string, options?: { caseSensitive?: boolean }): ExpectInterface
-  /** Assert the text matches a regex pattern */
-  toMatch(pattern: RegExp | string): ExpectInterface
-  /** Assert the response asks questions */
-  toAskQuestions(options?: { min?: number; max?: number }): ExpectInterface
-  /** Assert via LLM-as-judge evaluation */
-  toPassJudge(criteriaOrOptions: string | JudgeOptions): Promise<ExpectInterface>
-  /** Assert via a custom grader function */
-  to(grader: GraderFn): ExpectInterface | Promise<ExpectInterface>
-}
-
-export interface ToolCallsExpectInterface {
-  not: ToolCallsExpectInterface
-  toHaveBeenCalled(): ToolCallsExpectInterface
-  toHaveCallCount(count: number): ToolCallsExpectInterface
-  toHaveCallCount(toolName: string, count: number): ToolCallsExpectInterface
-  toInclude(toolName: string): ToolCallsExpectInterface
-  toHaveArgs(toolName: string, expectedArgs: Record<string, unknown>): ToolCallsExpectInterface
-  toHaveResult(toolName: string, expectedResult: unknown): ToolCallsExpectInterface
-  getCalls(toolName?: string): readonly ToolCallInfo[]
-}
-
-export interface JudgeOptions {
-  criteria: string
-  threshold?: number
-  /** Override the judge model for this specific assertion */
-  judge?: LanguageModel
-  /** Sampling temperature for the judge call. Defaults to 0 for stable evals. */
-  temperature?: number
-  /** Additional rubric reminders to include after the core criteria. */
-  rubric?: string | string[]
-  /** Override the structured judgment schema used to validate the judge output. */
-  schema?: z.ZodType<JudgeJudgment>
-}
-
-export interface JudgeJudgment {
-  /** Reasoning comes first to encourage an evidence-backed verdict. */
-  reasoning: string
-  /** Specific phrases from the output that support the verdict. */
-  evidence: string[]
-  /** Numeric confidence/quality score from 0 to 1. */
-  score: number
-  /** Final verdict after considering the reasoning and evidence. */
-  verdict: 'PASS' | 'FAIL'
-}
-
-// ============================================================================
-// Execution Results
-// ============================================================================
-
-export type TaskStatus = 'passed' | 'failed' | 'skipped' | 'error'
-
-export interface TrialResult {
-  status: TaskStatus
-  duration: number
-  graderResults: GraderResult[]
-  error?: string
-  usage: UsageInfo
-  costUsd: number
-}
-
-export interface TaskResult {
-  name: string
-  group?: string
-  file?: string
-  tags?: string[]
-  description?: string
-  metadata?: EvalMetadata
-  status: TaskStatus
-  trials: TrialResult[]
-  duration: number
-}
-
-export interface GroupResult {
-  name: string
-  tags?: string[]
-  description?: string
-  metadata?: EvalMetadata
-  tasks: TaskResult[]
-  duration: number
-}
-
-export interface RunResult {
-  success: boolean
-  groups: GroupResult[]
-  ungrouped: TaskResult[]
-  summary: {
-    total: number
-    passed: number
-    failed: number
-    skipped: number
-  }
-  usage: UsageInfo
-  costUsd: number
-  duration: number
-}
-
-// ============================================================================
-// Configuration
-// ============================================================================
-
-export interface EvaliteConfig {
+export interface Config extends EvalOptions {
+  /** Globs for eval files. Default ["**\/*.eval.ts", "**\/*.eval.js"]. */
   include?: string[]
   exclude?: string[]
-  trials?: number
-  timeout?: number
-  parallel?: boolean
-  maxConcurrency?: number
-  reporters?: ('console' | 'json')[]
-  maxCost?: number
+  /** Trials run at the same time. Default 5. */
+  concurrency?: number
+  /** Where runs are saved. Default ".agentevals/runs". */
+  outDir?: string
+}
+
+// ---------------------------------------------------------------------------
+// Results
+// ---------------------------------------------------------------------------
+
+export type BrokenReason = 'timed out' | 'error' | 'cut off' | 'grader error'
+
+export type TrialStatus = 'pass' | 'fail' | 'broken'
+
+export interface GraderOutcome extends Verdict {
+  grader: string
+  kind: 'code' | 'judge'
+}
+
+export interface TrialRecord {
+  trial: number
+  status: TrialStatus
+  /** Why the trial didn't measure the model. Only when status is "broken". */
+  broken?: BrokenReason
+  error?: string
+  /** The task's output, normalized to plain JSON so it can be regraded later. */
+  output?: unknown
+  verdicts: GraderOutcome[]
+  durationMs: number
+}
+
+export type Split = 'train' | 'test'
+
+export interface CaseRecord {
+  id: string
+  split: Split
+  tags?: string[]
+  input: unknown
+  expected?: unknown
+  trials: TrialRecord[]
+}
+
+export interface CaseSummary {
+  id: string
+  split: Split
+  /** Trials that measured the model. */
+  ran: number
+  passed: number
+  broken: number
+  /** passed / ran, or undefined when every trial broke. */
+  passRate?: number
+}
+
+export interface ScoreSummary {
+  /** Cases with at least one trial that measured the model. */
+  cases: number
+  /** Mean per-case pass rate, 0 to 1. */
+  score?: number
+  /** 95% range, counting each case once however many trials it had. */
+  low?: number
+  high?: number
+  /** Cases that passed some trials and failed others. */
+  flaky: string[]
+}
+
+export interface RunRecord {
+  version: 1
+  eval: string
+  variant?: string
+  label?: string
+  startedAt: string
+  durationMs: number
+  options: Required<Pick<EvalOptions, 'trials' | 'gate' | 'timeoutMs' | 'maxBroken'>> & Pick<EvalOptions, 'holdout' | 'minScore'>
+  cases: CaseRecord[]
+}
+
+export interface RunSummary {
+  eval: string
+  variant?: string
+  trials: { total: number; passed: number; failed: number; broken: number; byReason: Partial<Record<BrokenReason, number>> }
+  all: ScoreSummary
+  train?: ScoreSummary
+  test?: ScoreSummary
+  /** Gate failures, too many broken trials, or a missed minScore. Empty means the run succeeded. */
+  problems: string[]
+  ok: boolean
 }

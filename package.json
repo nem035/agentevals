@@ -1,7 +1,7 @@
 {
   "name": "@nem035/agentevals",
-  "version": "0.1.2",
-  "description": "A Vitest-like CLI for AI agent evaluations. Test your LLM apps with simple, declarative evals.",
+  "version": "1.0.0",
+  "description": "Evals you can trust: per-case pass rates, broken runs kept out of the score, score ranges, a luck check for comparisons, and held-out cases.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -22,12 +22,10 @@
     "bin"
   ],
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:coverage": "vitest run --coverage",
     "prepublishOnly": "npm run build && npm run test:run"
   },
   "keywords": [
@@ -35,16 +33,11 @@
     "eval",
     "evals",
     "evaluation",
-    "testing",
     "llm",
     "agent",
-    "anthropic",
-    "openai",
-    "claude",
-    "gpt",
-    "cli",
-    "vitest",
-    "test"
+    "testing",
+    "llm-as-judge",
+    "mcnemar"
   ],
   "author": "",
   "license": "MIT",
@@ -55,17 +48,14 @@
   "bugs": {
     "url": "https://github.com/nem035/agentevals/issues"
   },
-  "homepage": "https://github.com/nem035/agentevals#readme",
+  "homepage": "https://agentevals.dev",
   "dependencies": {
-    "ai": "^6.0.0",
     "commander": "^13.0.0",
-    "glob": "^11.0.0",
-    "picocolors": "^1.1.0",
-    "zod": "^3.24.0"
+    "glob": "^13.0.0",
+    "jiti": "^2.4.0",
+    "picocolors": "^1.1.0"
   },
   "devDependencies": {
-    "@ai-sdk/anthropic": "^3.0.0",
-    "@ai-sdk/openai": "^3.0.0",
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
